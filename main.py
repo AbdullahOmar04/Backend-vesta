@@ -5,6 +5,8 @@ from firebase_admin import credentials, firestore
 
 import os, json
 
+import uvicorn
+
 firebase_key = os.environ.get("FIREBASE_KEY")
 if not firebase_key:
     raise Exception("FIREBASE_KEY environment variable not set.")
@@ -118,3 +120,8 @@ def get_transactions(uid: str, account_id: str):
 
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+    
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))  # Render sets PORT automatically
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
