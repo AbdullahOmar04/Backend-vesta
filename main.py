@@ -13,7 +13,18 @@ cred = credentials.Certificate(json.loads(firebase_key))
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-app = FastAPI()
+app = FastAPI(
+    title="Vesta Backend",
+    description="MVP backend for syncing accounts and transactions with Firebase",
+    version="0.1.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+@app.get("/")
+def root():
+    return {"message": "Vesta backend is live 🚀"}
+
 ACC_BASE_URL = "http://jpcjofsdev.apigw-az-eu.webmethods.io/gateway/Accounts/v0.4.3"
 TRANS_BASE_URL = "http://jpcjofsdev.apigw-az-eu.webmethods.io/gateway/Transactions/v0.4.3/accounts"
 
