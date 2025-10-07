@@ -3,7 +3,13 @@ import requests
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-cred = credentials.Certificate("serviceAccountKey.json")
+import os, json
+
+firebase_key = os.environ.get("FIREBASE_KEY")
+if not firebase_key:
+    raise Exception("FIREBASE_KEY environment variable not set.")
+cred = credentials.Certificate(json.loads(firebase_key))
+
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
