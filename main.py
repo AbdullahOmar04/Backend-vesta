@@ -126,7 +126,7 @@ def get_transactions(uid: str, account_id: str):
 
 @app.get("/get_sosps/{uid}/{account_id}") 
 def get_sosps(uid: str, account_id: str):
-    url = f"{SOSP_BASE_URL}/accounts/{account_id}/sosps"
+    url = f"{SOSP_BASE_URL}/accounts/{account_id}/SOSPs"
 
     try:
         response = requests.get(url, timeout=15)
