@@ -31,6 +31,7 @@ def root():
 # --- Base URLs ---
 ACC_BASE_URL = "http://jpcjofsdev.apigw-az-eu.webmethods.io/gateway/Accounts/v0.4.3"
 TRANS_BASE_URL = "http://jpcjofsdev.apigw-az-eu.webmethods.io/gateway/Transactions/v0.4.3/accounts"
+SOSP_BASE_URL = "https://jpcjofsdev.apigw-az-eu.webmethods.io/gateway/Standing%20Orders%20&%20Scheduled%20Payments%20(SOSPs)/v0.4.3"
 
 
 # --- Sync Accounts Endpoint ---
@@ -122,6 +123,35 @@ def get_transactions(uid: str, account_id: str):
 
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Transactions API error: {str(e)}")
+
+@app.get("/get_sosps/{uid}/{account_id}") 
+def get_sosps(uid: str, account_id: str):
+    url = f"{SOSP_BASE_URL}/accounts/{account_id}/sosps"
+
+    try:
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        sosps = response.json().get("data", [])
+
+        account_ref = db.collection("users").document(uid).collection("accounts").document(account_id)
+        sosp_ref = account_ref.collection("sosps")
+
+        for doc in sosp_ref.stream():
+            doc.reference.delete()
+
+        batch = db.batch()
+        for sosp in sosps:
+            sosp_doc = sosp_ref.document(sosp["sospId"])
+            batch.set(sosp_doc, sosp)
+        batch.commit()
+
+        return {
+            "status": "success",
+            "sosps_synced": len(sosps)
+        }
+
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=500, detail=f"SOSPs API error: {str(e)}")
 
 
 # --- Uvicorn Entrypoint ---
