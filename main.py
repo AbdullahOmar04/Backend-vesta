@@ -141,7 +141,7 @@ def get_sosps(uid: str, account_id: str):
 
         batch = db.batch()
         for sosp in sosps:
-            sosp_doc = sosp_ref.document(sosp["sospId"])
+            sosp_doc = sosp_ref.document(sosp["SOSPId"])
             batch.set(sosp_doc, sosp)
         batch.commit()
 
