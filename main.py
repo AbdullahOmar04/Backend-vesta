@@ -105,15 +105,22 @@ def get_transactions(uid: str, account_id: str):
         account_ref = db.collection("users").document(uid).collection("accounts").document(account_id)
         tx_ref = account_ref.collection("transactions")
 
-        # Clear old transactions
-        for doc in tx_ref.stream():
-            doc.reference.delete()
-
-        # Save new transactions
         batch = db.batch()
+
         for tx in transactions:
-            tx_doc = tx_ref.document(tx["transactionId"])
-            batch.set(tx_doc, tx)
+            tx_id = tx["transactionId"]
+            tx_doc = tx_ref.document(tx_id)
+            existing = tx_doc.get()
+
+            if existing.exists:
+                existing_data = existing.to_dict()
+                if "category" in existing_data:
+                    tx["category"] = existing_data["category"]
+                if "note" in existing_data:
+                    tx["note"] = existing_data["note"]
+
+            batch.set(tx_doc, tx, merge=True)
+
         batch.commit()
 
         return {
