@@ -94,24 +94,18 @@ def sync_accounts(uid: str, customer_id: str):
 from typing import Optional
 from fastapi import HTTPException, Query
 
-# --- Get Transactions Endpoint ---
-@app.get("/get_transactions/{uid}/{account_id}")
-def get_transactions(
-    uid: str,
-    account_id: str,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=200),
-    txn_type: Optional[str] = Query(
-        None, regex="^(debit|credit)$", description="Filter by debit/credit"
-    ),
-):
-    """
-    Fetch transactions for an account and store them in Firestore
-    under users/{uid}/accounts/{account_id}/transactions/{transactionId}.
+from fastapi import HTTPException
 
-    - Uses skip/limit for pagination.
-    - Optionally filters by transactionType (debit/credit).
-    - Flattens the payload to match TransactionModel.fromFirestore:
+@app.get("/get_transactions/{uid}/{account_id}")
+def get_transactions(uid: str, account_id: str):
+    """
+    Fetch transactions for an account and store them in Firestore under:
+    users/{uid}/accounts/{account_id}/transactions/{transactionId}
+
+    We do NOT send skip/limit/sort to the JOPACC API because it returns 400
+    for those query params.
+
+    We also flatten the data to match TransactionModel.fromFirestore:
       {
         accountId, amount, currency, type, date,
         merchantName, description, accountLabel, category, source
@@ -119,27 +113,13 @@ def get_transactions(
     """
 
     url = f"{TRANS_BASE_URL}/{account_id}/transactions"
-    params = {
-      "skip": skip,
-      "limit": limit,
-      "sort": "desc",
-    }
-    # if the upstream API supports transactionType as a query param:
-    if txn_type:
-        params["transactionType"] = txn_type
 
     try:
-        response = requests.get(url, params=params, timeout=15)
+        # 🔹 No params here – JOPACC was returning 400 with skip/limit/sort
+        response = requests.get(url, timeout=15)
         response.raise_for_status()
         body = response.json()
         transactions = body.get("data", [])
-
-        # If upstream doesn't filter by type, enforce locally as well
-        if txn_type:
-            transactions = [
-                tx for tx in transactions
-                if (tx.get("transactionType") or "").lower() == txn_type
-            ]
 
         account_ref = (
             db.collection("users")
@@ -215,7 +195,7 @@ def get_transactions(
                 "type": ttype,                  # "debit" / "credit"
                 "date": settlement_dt,          # ISO string
                 "merchantName": merchant,
-                "description": description,     # from rmtInf or later SMS/manual
+                "description": description,
                 "accountLabel": account_label,
                 "source": "openBanking",
             }
@@ -234,9 +214,6 @@ def get_transactions(
         return {
             "status": "success",
             "transactions_synced": count,
-            "skip": skip,
-            "limit": limit,
-            "filteredType": txn_type,
         }
 
     except requests.exceptions.RequestException as e:
