@@ -91,45 +91,159 @@ def sync_accounts(uid: str, customer_id: str):
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Accounts API error: {str(e)}")
 
+from typing import Optional
+from fastapi import HTTPException, Query
 
 # --- Get Transactions Endpoint ---
 @app.get("/get_transactions/{uid}/{account_id}")
-def get_transactions(uid: str, account_id: str):
+def get_transactions(
+    uid: str,
+    account_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    txn_type: Optional[str] = Query(
+        None, regex="^(debit|credit)$", description="Filter by debit/credit"
+    ),
+):
+    """
+    Fetch transactions for an account and store them in Firestore
+    under users/{uid}/accounts/{account_id}/transactions/{transactionId}.
+
+    - Uses skip/limit for pagination.
+    - Optionally filters by transactionType (debit/credit).
+    - Flattens the payload to match TransactionModel.fromFirestore:
+      {
+        accountId, amount, currency, type, date,
+        merchantName, description, accountLabel, category, source
+      }
+    """
+
     url = f"{TRANS_BASE_URL}/{account_id}/transactions"
+    params = {
+      "skip": skip,
+      "limit": limit,
+      "sort": "desc",
+    }
+    # if the upstream API supports transactionType as a query param:
+    if txn_type:
+        params["transactionType"] = txn_type
 
     try:
-        response = requests.get(url, timeout=15)
+        response = requests.get(url, params=params, timeout=15)
         response.raise_for_status()
-        transactions = response.json().get("data", [])
+        body = response.json()
+        transactions = body.get("data", [])
 
-        account_ref = db.collection("users").document(uid).collection("accounts").document(account_id)
+        # If upstream doesn't filter by type, enforce locally as well
+        if txn_type:
+            transactions = [
+                tx for tx in transactions
+                if (tx.get("transactionType") or "").lower() == txn_type
+            ]
+
+        account_ref = (
+            db.collection("users")
+              .document(uid)
+              .collection("accounts")
+              .document(account_id)
+        )
         tx_ref = account_ref.collection("transactions")
 
         batch = db.batch()
+        count = 0
 
         for tx in transactions:
-            tx_id = tx["transactionId"]
-            tx_doc = tx_ref.document(tx_id)
-            existing = tx_doc.get()
+            tx_id = str(tx.get("transactionId") or "").strip()
+            if not tx_id:
+                continue
 
+            # Amount + currency
+            raw_amount = tx.get("transactionAmount", {}).get("amount", 0.0)
+            try:
+                amount = float(raw_amount)
+            except (TypeError, ValueError):
+                amount = 0.0
+
+            currency = (
+                tx.get("transactionAmount", {})
+                  .get("currency", "JOD")
+            )
+
+            # Type
+            ttype = (tx.get("transactionType") or "").lower()
+            if ttype not in ("debit", "credit"):
+                ttype = "debit"
+
+            # Date (keep as ISO string)
+            settlement_dt = tx.get("settlementDateTime")
+
+            # Merchant / "from where"
+            creditor = (tx.get("creditor") or {}).get("creditorPersonal") or {}
+            debtor = (tx.get("debtor") or {}).get("debtorPersonal") or {}
+            merchant = creditor.get("name") or debtor.get("name") or None
+            if isinstance(merchant, str):
+                merchant = merchant.strip() or None
+
+            # Description from rmtInf.unstructured[0]
+            description = None
+            rmt = tx.get("rmtInf") or {}
+            unstructured = rmt.get("unstructured")
+            if isinstance(unstructured, list) and unstructured:
+                description = str(unstructured[0])
+
+            # Account label from IBAN last 4
+            debtor_account = (tx.get("debtor") or {}).get("debtorAccount") or {}
+            main_route = debtor_account.get("mainRoute") or {}
+            iban = main_route.get("address")
+            account_label = None
+            if isinstance(iban, str) and len(iban) >= 4:
+                account_label = "•••• " + iban[-4:]
+
+            # Preserve existing category if user already tagged this transaction
+            doc_ref = tx_ref.document(tx_id)
+            existing = doc_ref.get()
+            existing_category = None
             if existing.exists:
-                existing_data = existing.to_dict()
+                existing_data = existing.to_dict() or {}
                 if "category" in existing_data:
-                    tx["category"] = existing_data["category"]
-                if "note" in existing_data:
-                    tx["note"] = existing_data["note"]
+                    existing_category = existing_data["category"]
 
-            batch.set(tx_doc, tx, merge=True)
+            doc_data = {
+                "accountId": account_id,
+                "amount": amount,
+                "currency": currency,
+                "type": ttype,                  # "debit" / "credit"
+                "date": settlement_dt,          # ISO string
+                "merchantName": merchant,
+                "description": description,     # from rmtInf or later SMS/manual
+                "accountLabel": account_label,
+                "source": "openBanking",
+            }
+
+            # Keep user category if it existed
+            if existing_category is not None:
+                doc_data["category"] = existing_category
+            else:
+                doc_data["category"] = None
+
+            batch.set(doc_ref, doc_data, merge=True)
+            count += 1
 
         batch.commit()
 
         return {
             "status": "success",
-            "transactions_synced": len(transactions)
+            "transactions_synced": count,
+            "skip": skip,
+            "limit": limit,
+            "filteredType": txn_type,
         }
 
     except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=500, detail=f"Transactions API error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Transactions API error: {str(e)}"
+        )
 
 @app.get("/get_sosps/{uid}/{account_id}") 
 def get_sosps(uid: str, account_id: str):
