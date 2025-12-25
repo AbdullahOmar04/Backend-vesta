@@ -28,7 +28,6 @@ app = FastAPI(
 def root():
     return {"message": "✅ Vesta backend is live and running 🚀"}
 
-# --- Base URLs ---
 ACC_BASE_URL = "http://jpcjofsdev.apigw-az-eu.webmethods.io/gateway/Accounts/v0.4.3"
 TRANS_BASE_URL = "http://jpcjofsdev.apigw-az-eu.webmethods.io/gateway/Transactions/v0.4.3/accounts"
 SOSP_BASE_URL = "https://jpcjofsdev.apigw-az-eu.webmethods.io/gateway/Standing%20Orders%20&%20Scheduled%20Payments%20(SOSPs)/v0.4.3"
@@ -91,31 +90,20 @@ def sync_accounts(uid: str, customer_id: str):
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Accounts API error: {str(e)}")
 
-from typing import Optional
-from fastapi import HTTPException, Query
-
-from fastapi import HTTPException
-
 @app.get("/get_transactions/{uid}/{account_id}")
 def get_transactions(uid: str, account_id: str):
     """
     Fetch transactions for an account and store them in Firestore under:
     users/{uid}/accounts/{account_id}/transactions/{transactionId}
 
-    We do NOT send skip/limit/sort to the JOPACC API because it returns 400
-    for those query params.
-
-    We also flatten the data to match TransactionModel.fromFirestore:
-      {
-        accountId, amount, currency, type, date,
-        merchantName, description, accountLabel, category, source
-      }
+    - Do NOT send skip/limit/sort to JOPACC (400 error).
+    - If a transactionId already exists in Firestore, we SKIP it
+      (no update / no overwrite).
     """
 
     url = f"{TRANS_BASE_URL}/{account_id}/transactions"
 
     try:
-        # 🔹 No params here – JOPACC was returning 400 with skip/limit/sort
         response = requests.get(url, timeout=15)
         response.raise_for_status()
         body = response.json()
@@ -129,12 +117,17 @@ def get_transactions(uid: str, account_id: str):
         )
         tx_ref = account_ref.collection("transactions")
 
+        existing_ids = {doc.id for doc in tx_ref.stream()}
+
         batch = db.batch()
         count = 0
 
         for tx in transactions:
             tx_id = str(tx.get("transactionId") or "").strip()
             if not tx_id:
+                continue
+
+            if tx_id in existing_ids:
                 continue
 
             # Amount + currency
@@ -179,34 +172,22 @@ def get_transactions(uid: str, account_id: str):
             if isinstance(iban, str) and len(iban) >= 4:
                 account_label = "•••• " + iban[-4:]
 
-            # Preserve existing category if user already tagged this transaction
             doc_ref = tx_ref.document(tx_id)
-            existing = doc_ref.get()
-            existing_category = None
-            if existing.exists:
-                existing_data = existing.to_dict() or {}
-                if "category" in existing_data:
-                    existing_category = existing_data["category"]
 
             doc_data = {
                 "accountId": account_id,
                 "amount": amount,
                 "currency": currency,
-                "type": ttype,                  # "debit" / "credit"
-                "date": settlement_dt,          # ISO string
+                "type": ttype,
+                "date": settlement_dt,
                 "merchantName": merchant,
                 "description": description,
                 "accountLabel": account_label,
                 "source": "openBanking",
+                "category": None,
             }
 
-            # Keep user category if it existed
-            if existing_category is not None:
-                doc_data["category"] = existing_category
-            else:
-                doc_data["category"] = None
-
-            batch.set(doc_ref, doc_data, merge=True)
+            batch.set(doc_ref, doc_data, merge=False)
             count += 1
 
         batch.commit()
