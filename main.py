@@ -7,9 +7,19 @@ import json
 import uvicorn
 
 # --- Firebase Setup ---
-FIREBASE_CRED_PATH = os.getenv("FIREBASE_CRED_PATH")
 if not firebase_admin._apps:
-    cred = credentials.Certificate(FIREBASE_CRED_PATH)
+    # Try to load credentials from JSON string (for Render/production)
+    firebase_cred_json = os.getenv("FIREBASE_CREDENTIALS")
+
+    if firebase_cred_json:
+        # Parse JSON string from environment variable
+        cred_dict = json.loads(firebase_cred_json)
+        cred = credentials.Certificate(cred_dict)
+    else:
+        # Fallback to file path (for local development)
+        firebase_cred_path = os.getenv("FIREBASE_CRED_PATH", "serviceAccountKey.json")
+        cred = credentials.Certificate(firebase_cred_path)
+
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
