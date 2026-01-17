@@ -7,13 +7,13 @@ import json
 import uvicorn
 
 # --- Firebase Setup ---
-firebase_key = os.environ.get("FIREBASE_KEY")
-if not firebase_key:
-    raise Exception("FIREBASE_KEY environment variable not set.")
+FIREBASE_CRED_PATH = os.getenv("FIREBASE_CRED_PATH", "serviceAccountKey.json")
+if not firebase_admin._apps:
+    cred = credentials.Certificate(FIREBASE_CRED_PATH)
+    firebase_admin.initialize_app(cred)
 
-cred = credentials.Certificate(json.loads(firebase_key))
-firebase_admin.initialize_app(cred)
 db = firestore.client()
+
 
 # --- FastAPI App ---
 app = FastAPI(
@@ -231,6 +231,25 @@ def get_sosps(uid: str, account_id: str):
 
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=f"SOSPs API error: {str(e)}")
+
+#########################################################################################################################
+
+@app.get("/subscribe")
+def subscribe(email: str):
+    """
+    """
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid email address.")
+
+    db = firestore.client()
+
+    subs_ref = db.collection("subscriptions").document(email)
+    subs_ref.set({
+        "email": email,
+        "subscribedAt": firestore.SERVER_TIMESTAMP,
+    })
+
+    return {"status": "success", "message": f"Subscription successful for {email}."}
 
 
 # --- Uvicorn Entrypoint ---
