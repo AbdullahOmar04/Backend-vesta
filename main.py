@@ -1,4 +1,8 @@
-from fastapi import FastAPI, HTTPException
+from datetime import datetime, timedelta, timezone
+import time
+import uuid
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
 import requests
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -28,6 +32,8 @@ app = FastAPI(
 def root():
     return {"message": "✅ Vesta backend is live and running 🚀"}
 
+
+#################### JOPACC INTEGRATION ENDPOINTS ####################
 ACC_BASE_URL = "http://jpcjofsdev.apigw-az-eu.webmethods.io/gateway/Accounts/v0.4.3"
 TRANS_BASE_URL = "http://jpcjofsdev.apigw-az-eu.webmethods.io/gateway/Transactions/v0.4.3/accounts"
 SOSP_BASE_URL = "https://jpcjofsdev.apigw-az-eu.webmethods.io/gateway/Standing%20Orders%20&%20Scheduled%20Payments%20(SOSPs)/v0.4.3"
@@ -233,7 +239,551 @@ def get_sosps(uid: str, account_id: str):
         raise HTTPException(status_code=500, detail=f"SOSPs API error: {str(e)}")
 
 
-# --- Uvicorn Entrypoint ---
+#########################################################################################################################
+
+@app.get("/subscribe")
+def subscribe(email: str):
+    """
+    """
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid email address.")
+
+    db = firestore.client()
+
+    subs_ref = db.collection("subscriptions").document(email)
+    subs_ref.set({
+        "email": email,
+        "subscribedAt": firestore.SERVER_TIMESTAMP,
+    })
+
+    return {"status": "success", "message": f"Subscription successful for {email}."}
+
+
+#####################################################AHLI BANK ##########################################################
+COMPLY_HOST = os.getenv("COMPLY_HOST", "https://jo-comply.thefinx.io").rstrip("/")
+
+VESTA_CLIENT_ID = os.getenv("VESTA_CLIENT_ID", "")
+VESTA_CLIENT_SECRET = os.getenv("VESTA_CLIENT_SECRET", "")
+
+# Required by most Comply calls
+FINX_INSTITUTION_APP_CODE = os.getenv("FINX_INSTITUTION_APP_CODE", "")  # e.g. "xxxx"
+# Your backend callback (must match what you registered on Comply)
+AHLI_REDIRECT_URI = os.getenv("AHLI_REDIRECT_URI", "")  # e.g. "https://backend-vesta.onrender.com/banks/ahli/callback"
+
+# OpenID discovery: if Comply has a specific endpoint in Postman collection, set it here.
+# If empty, we fall back to standard .well-known path (may or may not work for your tenant).
+FINX_OPENID_CONFIG_URL = os.getenv(
+    "FINX_OPENID_CONFIG_URL",
+    f"{COMPLY_HOST}/.well-known/openid-configuration",
+)
+
+# Comply API base (the “/api/public/jo/v0.4/...” calls in your screenshots)
+COMPLY_API_BASE = os.getenv("COMPLY_API_BASE", f"{COMPLY_HOST}/api/public/jo/v0.4").rstrip("/")
+
+AHLI_PROVIDER_KEY = "ahli"
+AHLI_PROVIDER_LABEL = "Ahli"
+AHLI_SANDBOX = "finx"  # store alongside accounts like your other sandbox keys
+
+
+# ----------------------------
+# Helpers
+# ----------------------------
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+def _iso(dt: datetime) -> str:
+    return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+def _require_env() -> None:
+    missing = []
+    if not VESTA_CLIENT_ID: missing.append("VESTA_CLIENT_ID")
+    if not VESTA_CLIENT_SECRET: missing.append("VESTA_CLIENT_SECRET")
+    if not FINX_INSTITUTION_APP_CODE: missing.append("FINX_INSTITUTION_APP_CODE")
+    if not AHLI_REDIRECT_URI: missing.append("AHLI_REDIRECT_URI")
+    if missing:
+        raise HTTPException(status_code=500, detail=f"Missing env vars: {', '.join(missing)}")
+
+def _tpp_client_credentials_token() -> dict:
+    """
+    Token for calling Comply “TPP” endpoints (client_credentials).
+    """
+    _require_env()
+    url = f"{COMPLY_HOST}/keycloak/realms/open-banking/protocol/openid-connect/token"
+    data = {"grant_type": "client_credentials"}
+    r = requests.post(url, data=data, auth=(VESTA_CLIENT_ID, VESTA_CLIENT_SECRET), timeout=20)
+    r.raise_for_status()
+    return r.json()
+
+def _openid_config(tpp_access_token: str | None = None) -> dict:
+    """
+    Get authorization_endpoint + token_endpoint.
+    Some tenants require Authorization Bearer tpp token. We support both.
+    """
+    headers = {}
+    if tpp_access_token:
+        headers["Authorization"] = f"Bearer {tpp_access_token}"
+
+    r = requests.get(FINX_OPENID_CONFIG_URL, headers=headers, timeout=20)
+    # If this fails in your tenant, point FINX_OPENID_CONFIG_URL to the exact Postman endpoint.
+    r.raise_for_status()
+    return r.json()
+
+def _create_consent(tpp_access_token: str, permissions: list[str], expiration_dt: datetime) -> dict:
+    """
+    Creates account-access-consent for PSU.
+    Postman sandbox typically accepts JSON body.
+    """
+    url = f"{COMPLY_API_BASE}/account-access-consents"
+    interaction_id = str(uuid.uuid4())
+
+    headers = {
+        "Authorization": f"Bearer {tpp_access_token}",
+        "x-ftg-institution-application-code": FINX_INSTITUTION_APP_CODE,
+        "x-fapi-interaction-id": interaction_id,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+    payload = {
+        "permissions": permissions,
+        "expirationDateTime": _iso(expiration_dt),
+    }
+
+    r = requests.post(url, headers=headers, json=payload, timeout=25)
+    r.raise_for_status()
+    return r.json()
+
+def _build_auth_url(openid_conf: dict, *, consent_id: str, state: str) -> str:
+    """
+    Build the browser redirect URL for PSU login/consent approval.
+
+    NOTE: Some Comply setups require consent_id as part of a signed request object.
+    If your tenant needs that, tell me what the Postman “authorize” request looks like
+    and I’ll adjust this builder.
+    """
+    _require_env()
+    auth_ep = openid_conf.get("authorization_endpoint")
+    if not auth_ep:
+        raise HTTPException(status_code=500, detail="OpenID config missing authorization_endpoint")
+
+    params = {
+        "response_type": "code",
+        "client_id": VESTA_CLIENT_ID,
+        "redirect_uri": AHLI_REDIRECT_URI,
+        "scope": "accounts",
+        "state": state,
+        # Common pattern in some sandbox setups:
+        "consentId": consent_id,
+    }
+    # Manual encode to avoid importing urllib in your file (optional)
+    from urllib.parse import urlencode
+    return f"{auth_ep}?{urlencode(params)}"
+
+def _exchange_code_for_psu_token(openid_conf: dict, *, code: str) -> dict:
+    token_ep = openid_conf.get("token_endpoint") or f"{COMPLY_HOST}/keycloak/realms/open-banking/protocol/openid-connect/token"
+    data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": AHLI_REDIRECT_URI,
+        "scope": "accounts",
+    }
+    r = requests.post(token_ep, data=data, auth=(VESTA_CLIENT_ID, VESTA_CLIENT_SECRET), timeout=25)
+    r.raise_for_status()
+    return r.json()
+
+def _refresh_psu_token(openid_conf: dict, *, refresh_token: str) -> dict:
+    token_ep = openid_conf.get("token_endpoint") or f"{COMPLY_HOST}/keycloak/realms/open-banking/protocol/openid-connect/token"
+    data = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "scope": "accounts",
+    }
+    r = requests.post(token_ep, data=data, auth=(VESTA_CLIENT_ID, VESTA_CLIENT_SECRET), timeout=25)
+    r.raise_for_status()
+    return r.json()
+
+def _providers_ref(uid: str):
+    return db.collection("users").document(uid)
+
+def _write_provider_state(uid: str, data: dict):
+    user_ref = _providers_ref(uid)
+    user_ref.set(
+        {"providers": {AHLI_PROVIDER_KEY: data}},
+        merge=True
+    )
+
+def _read_provider_state(uid: str) -> dict:
+    snap = _providers_ref(uid).get()
+    d = snap.to_dict() or {}
+    return ((d.get("providers") or {}).get(AHLI_PROVIDER_KEY) or {})
+
+def _ensure_psu_access_token(uid: str) -> str:
+    """
+    Loads stored PSU token; refreshes if expired/near-expiry.
+    """
+    st = _read_provider_state(uid)
+    tokens = st.get("tokens") or {}
+    access_token = tokens.get("access_token")
+    refresh_token = tokens.get("refresh_token")
+    expires_at = tokens.get("expires_at")  # ISO string
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Ahli not linked yet (no access_token). Start link first.")
+
+    # If no expiry stored, just use it
+    if not expires_at:
+        return access_token
+
+    try:
+        exp = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+    except Exception:
+        return access_token
+
+    # Refresh if expiring within 60s
+    if exp <= (_utc_now() + timedelta(seconds=60)) and refresh_token:
+        tpp = _tpp_client_credentials_token()
+        openid_conf = _openid_config(tpp.get("access_token"))
+        newt = _refresh_psu_token(openid_conf, refresh_token=refresh_token)
+
+        new_access = newt.get("access_token", access_token)
+        new_refresh = newt.get("refresh_token", refresh_token)
+        ttl = int(newt.get("expires_in") or 0)
+        new_exp = _utc_now() + timedelta(seconds=max(ttl, 0))
+
+        _write_provider_state(uid, {
+            "sandbox": AHLI_SANDBOX,
+            "tokens": {
+                "access_token": new_access,
+                "refresh_token": new_refresh,
+                "expires_at": _iso(new_exp),
+                "updatedAt": firestore.SERVER_TIMESTAMP,
+            }
+        })
+        return new_access
+
+    return access_token
+
+def _comply_headers_psu(psu_access_token: str) -> dict:
+    """
+    Minimal headers that usually satisfy sandbox.
+    Add more if your tenant enforces them strictly.
+    """
+    return {
+        "Authorization": f"Bearer {psu_access_token}",
+        "x-ftg-institution-application-code": FINX_INSTITUTION_APP_CODE,
+        "x-interactions-id": str(uuid.uuid4()),
+        "x-idempotency-key": str(uuid.uuid4()),
+        "Accept": "application/json",
+    }
+
+
+# ----------------------------
+# ENDPOINTS
+# ----------------------------
+
+@app.get("/banks/ahli/start_link/{uid}")
+def ahli_start_link(uid: str):
+    """
+    1) Get TPP token (client_credentials)
+    2) Create consent
+    3) Build auth URL for user to open in WebView/browser
+    """
+    _require_env()
+
+    permissions = [
+        "readAccounts",
+        "readBalances",
+        "readTransactions",
+        "readTransactionsCredits",
+        "readTransactionsDebits",
+        "readBeneficiaries",
+    ]
+    expires = _utc_now() + timedelta(days=365)
+
+    tpp = _tpp_client_credentials_token()
+    tpp_access = tpp.get("access_token", "")
+    if not tpp_access:
+        raise HTTPException(status_code=500, detail="Failed to get TPP access_token")
+
+    openid_conf = _openid_config(tpp_access)
+
+    consent = _create_consent(tpp_access, permissions=permissions, expiration_dt=expires)
+    consent_id = consent.get("consentId") or consent.get("consent_id")
+    if not consent_id:
+        raise HTTPException(status_code=500, detail=f"Consent response missing consentId: {consent}")
+
+    state = uuid.uuid4().hex
+
+    _write_provider_state(uid, {
+        "provider": AHLI_PROVIDER_LABEL,
+        "sandbox": AHLI_SANDBOX,
+        "consentId": consent_id,
+        "state": state,
+        "status": consent.get("status"),
+        "permissions": permissions,
+        "createdAt": firestore.SERVER_TIMESTAMP,
+        "updatedAt": firestore.SERVER_TIMESTAMP,
+    })
+
+    auth_url = _build_auth_url(openid_conf, consent_id=consent_id, state=state)
+
+    return {"status": "ok", "consentId": consent_id, "authUrl": auth_url}
+
+
+@app.get("/banks/ahli/callback", response_class=HTMLResponse)
+def ahli_callback(request: Request):
+    """
+    This MUST be your registered redirect_uri.
+    It receives ?code=...&state=...
+    Exchanges code -> PSU tokens, stores them, and (optionally) syncs accounts.
+    """
+    _require_env()
+
+    qp = dict(request.query_params)
+    code = (qp.get("code") or "").strip()
+    state = (qp.get("state") or "").strip()
+    error = (qp.get("error") or "").strip()
+    error_desc = (qp.get("error_description") or "").strip()
+    uid = (qp.get("uid") or "").strip()  # OPTIONAL: if you pass uid through state mapping instead, remove this
+
+    # If your redirect does NOT include uid, we’ll map state->uid.
+    if not uid:
+        # Find uid by scanning users is expensive.
+        # Better: store a small "linkSessions" collection keyed by state.
+        return HTMLResponse("Missing uid in callback. Prefer /banks/ahli/start_link/{uid} then include uid in redirect.", status_code=400)
+
+    if error:
+        return HTMLResponse(f"Link failed: {error} {error_desc}", status_code=400)
+
+    if not code or not state:
+        return HTMLResponse("Missing code/state", status_code=400)
+
+    st = _read_provider_state(uid)
+    expected_state = (st.get("state") or "").strip()
+    if not expected_state or expected_state != state:
+        return HTMLResponse("Invalid state", status_code=400)
+
+    # Exchange code
+    tpp = _tpp_client_credentials_token()
+    openid_conf = _openid_config(tpp.get("access_token"))
+
+    tokens = _exchange_code_for_psu_token(openid_conf, code=code)
+
+    access_token = tokens.get("access_token")
+    refresh_token = tokens.get("refresh_token")
+    ttl = int(tokens.get("expires_in") or 0)
+    exp = _utc_now() + timedelta(seconds=max(ttl, 0))
+
+    if not access_token:
+        return HTMLResponse(f"Token exchange failed: {tokens}", status_code=400)
+
+    _write_provider_state(uid, {
+        "provider": AHLI_PROVIDER_LABEL,
+        "sandbox": AHLI_SANDBOX,
+        "consentId": st.get("consentId"),
+        "state": None,
+        "tokens": {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "expires_at": _iso(exp),
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        },
+        "linked": True,
+        "linkedAt": firestore.SERVER_TIMESTAMP,
+        "updatedAt": firestore.SERVER_TIMESTAMP,
+    })
+
+    # OPTIONAL: auto-sync accounts right after linking
+    try:
+        _ = _ahli_sync_accounts_internal(uid)
+    except Exception:
+        pass
+
+    # Return a simple success page (you can deep-link back to the app here)
+    return HTMLResponse(
+        "<h3>✅ Ahli linked successfully.</h3><p>You can close this window and return to Vesta.</p>",
+        status_code=200,
+    )
+
+
+def _ahli_sync_accounts_internal(uid: str) -> dict:
+    psu_token = _ensure_psu_access_token(uid)
+    headers = _comply_headers_psu(psu_token)
+
+    url = f"{COMPLY_API_BASE}/accounts"
+    r = requests.get(url, headers=headers, timeout=25)
+    r.raise_for_status()
+
+    body = r.json()
+    accounts = body.get("data") if isinstance(body, dict) else None
+    if accounts is None and isinstance(body, list):
+        accounts = body
+    if accounts is None:
+        accounts = []
+
+    user_ref = db.collection("users").document(uid)
+    accounts_ref = user_ref.collection("accounts")
+
+    # Delete only Ahli(finX) accounts (don’t wipe other banks)
+    for doc in accounts_ref.stream():
+        d = doc.to_dict() or {}
+        if d.get("provider") == AHLI_PROVIDER_LABEL and d.get("sandbox") == AHLI_SANDBOX:
+            doc.reference.delete()
+
+    batch = db.batch()
+    total_balance = 0.0
+    currency = "JOD"
+
+    for acc in accounts:
+        account_id = str(acc.get("accountId") or "").strip()
+        if not account_id:
+            continue
+
+        # balance can be under availableBalance.amount OR availableBalance.balanceAmount depending on schema
+        bal_obj = acc.get("availableBalance") or {}
+        raw_bal = bal_obj.get("amount")
+        if raw_bal is None:
+            raw_bal = bal_obj.get("balanceAmount")
+        try:
+            bal = float(raw_bal) if raw_bal is not None else 0.0
+        except Exception:
+            bal = 0.0
+
+        total_balance += bal
+        currency = acc.get("accountCurrency") or currency
+
+        acc_doc = {
+            **acc,
+            "provider": AHLI_PROVIDER_LABEL,
+            "sandbox": AHLI_SANDBOX,
+            "linked": False,  # your UI sets linked=true on selected accounts
+            "syncedAt": firestore.SERVER_TIMESTAMP,
+        }
+
+        batch.set(accounts_ref.document(account_id), acc_doc, merge=True)
+
+    # update user totals for this provider (keep it provider-scoped to avoid mixing with JoPACC totals)
+    batch.set(
+        user_ref,
+        {
+            "providers": {
+                AHLI_PROVIDER_KEY: {
+                    "totals": {
+                        "totalBalance": total_balance,
+                        "currency": currency,
+                        "updatedAt": firestore.SERVER_TIMESTAMP,
+                    }
+                }
+            }
+        },
+        merge=True,
+    )
+
+    batch.commit()
+
+    return {"accounts_synced": len(accounts), "totalBalance": total_balance, "currency": currency}
+
+
+@app.get("/banks/ahli/sync_accounts/{uid}")
+def ahli_sync_accounts(uid: str):
+    """
+    Call after the callback (or manually) to refresh accounts from Ahli via Comply.
+    """
+    out = _ahli_sync_accounts_internal(uid)
+    return {"status": "success", **out}
+
+
+@app.get("/banks/ahli/get_transactions/{uid}/{account_id}")
+def ahli_get_transactions(uid: str, account_id: str):
+    """
+    Fetch transactions for one account and store:
+      users/{uid}/accounts/{account_id}/transactions/{transactionId}
+    Skips existing transactionIds.
+    """
+    psu_token = _ensure_psu_access_token(uid)
+    headers = _comply_headers_psu(psu_token)
+
+    url = f"{COMPLY_API_BASE}/accounts/{account_id}/transactions"
+    r = requests.get(url, headers=headers, timeout=25)
+    r.raise_for_status()
+
+    body = r.json()
+    txs = body.get("data") if isinstance(body, dict) else None
+    if txs is None and isinstance(body, list):
+        txs = body
+    if txs is None:
+        txs = []
+
+    account_ref = (
+        db.collection("users")
+          .document(uid)
+          .collection("accounts")
+          .document(account_id)
+    )
+    tx_ref = account_ref.collection("transactions")
+
+    existing_ids = {doc.id for doc in tx_ref.stream()}
+
+    batch = db.batch()
+    count = 0
+
+    for tx in txs:
+        tx_id = str(tx.get("transactionId") or "").strip()
+        if not tx_id or tx_id in existing_ids:
+            continue
+
+        amt_obj = tx.get("transactionAmount") or {}
+        raw_amount = amt_obj.get("amount")
+        try:
+            amount = float(raw_amount) if raw_amount is not None else 0.0
+        except Exception:
+            amount = 0.0
+
+        currency = amt_obj.get("currency") or "JOD"
+
+        ttype = (tx.get("transactionType") or "debit").lower()
+        if ttype not in ("debit", "credit"):
+            ttype = "debit"
+
+        settlement_dt = tx.get("settlementDateTime") or tx.get("presentementDateTime") or tx.get("presentmentDateTime")
+
+        creditor = (tx.get("creditor") or {}).get("creditorPersonal") or {}
+        debtor = (tx.get("debtor") or {}).get("debtorPersonal") or {}
+        merchant = creditor.get("name") or debtor.get("name") or None
+        if isinstance(merchant, str):
+            merchant = merchant.strip() or None
+
+        description = None
+        rmt = tx.get("rmtInf") or {}
+        if isinstance(rmt, dict):
+            unstructured = rmt.get("unstructured")
+            if isinstance(unstructured, list) and unstructured:
+                description = str(unstructured[0])
+        elif isinstance(rmt, str) and rmt.strip():
+            description = rmt.strip()
+
+        doc_data = {
+            "accountId": account_id,
+            "amount": amount,
+            "currency": currency,
+            "type": ttype,
+            "date": settlement_dt,
+            "merchantName": merchant,
+            "description": description,
+            "source": "openBanking",
+            "category": None,
+            "provider": AHLI_PROVIDER_LABEL,
+            "sandbox": AHLI_SANDBOX,
+            "raw": tx,
+            "syncedAt": firestore.SERVER_TIMESTAMP,
+        }
+
+        batch.set(tx_ref.document(tx_id), doc_data, merge=False)
+        count += 1
+
+    batch.commit()
+
+    return {"status": "success", "transactions_synced": count}
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))  # Render sets PORT automatically
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
