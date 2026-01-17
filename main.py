@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware  # ADD THIS
 import requests
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -32,6 +33,21 @@ app = FastAPI(
     version="0.1.0",
     docs_url="/docs",
     redoc_url="/redoc"
+)
+
+# --- CORS Configuration --- ADD THIS ENTIRE SECTION
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://vesta-7e96a.web.app",
+        "https://vesta-7e96a.firebaseapp.com",
+        "https://vestaapp.co",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.get("/")
