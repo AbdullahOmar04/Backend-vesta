@@ -68,54 +68,107 @@ def sync_accounts(uid: str, customer_id: str):
     try:
         response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
-        accounts = response.json().get("data", [])
+        accounts = response.json().get("data", []) or []
 
         user_ref = db.collection("users").document(uid)
         accounts_ref = user_ref.collection("accounts")
 
-        # Step 1: Delete existing accounts
+        # Step 1: Delete existing accounts (simple approach)
         for doc in accounts_ref.stream():
             doc.reference.delete()
 
-        # Step 2: Add new accounts and calculate totals
+        # Step 2: Add new trimmed accounts + totals
         batch = db.batch()
         total_balance = 0.0
         total_savings = 0.0
+        trimmed_accounts_out = []
 
         for acc in accounts:
-            balance = acc.get("availableBalance", {}).get("balanceAmount", 0.0)
-            total_balance += balance
+            account_id = str(acc.get("accountId", "")).strip()
+            if not account_id:
+                continue
 
-            # Detect savings accounts
-            account_type_code = acc.get("accountType", {}).get("code", "").upper()
-            account_type_name = acc.get("accountType", {}).get("name", "").lower()
-            if "SAV" in account_type_code or "savings" in account_type_name:
+            balance = acc.get("availableBalance", {}).get("balanceAmount", 0.0)
+            try:
+                balance = float(balance)
+            except Exception:
+                balance = 0.0
+
+            currency = (acc.get("accountCurrency") or "JOD").strip()
+
+            account_type_code = (acc.get("accountType", {}) or {}).get("code", "") or ""
+            account_type_name = (acc.get("accountType", {}) or {}).get("name", "") or ""
+
+            account_type_code_u = account_type_code.upper()
+            account_type_name_l = account_type_name.lower()
+            is_savings = ("SAV" in account_type_code_u) or ("savings" in account_type_name_l)
+
+            bank_name = (
+                (acc.get("institutionBasicInfo", {}) or {})
+                .get("name", {}) or {}
+            ).get("enName") or "Unknown Bank"
+
+            iban = (acc.get("mainRoute", {}) or {}).get("address") or ""
+
+            account_status = acc.get("accountStatus", "") or ""
+            locked_for_debit = bool(acc.get("lockedForDebit", False))
+            locked_for_credit = bool(acc.get("lockedForCredit", False))
+
+            trimmed = {
+                "accountId": account_id,
+                "linked": True,
+
+                "bankName": bank_name,
+                "accountTypeCode": account_type_code,
+                "accountTypeName": account_type_name,
+
+                "balanceAmount": balance,
+                "currency": currency,
+
+                "iban": iban,
+
+                # optional (kept flat)
+                "accountStatus": account_status,
+                "lockedForDebit": locked_for_debit,
+                "lockedForCredit": locked_for_credit,
+
+                "isSavings": is_savings,
+                "syncedAt": firestore.SERVER_TIMESTAMP,
+            }
+
+            total_balance += balance
+            if is_savings:
                 total_savings += balance
 
-            acc_ref = accounts_ref.document(acc["accountId"])
-            batch.set(acc_ref, acc)
+            acc_ref = accounts_ref.document(account_id)
+            batch.set(acc_ref, trimmed, merge=True)
+            trimmed_accounts_out.append(trimmed)
 
-        # Step 3: Update user document totals
         user_updates = {
-            "totalBalance": total_balance,
-            "currency": accounts[0]["accountCurrency"] if accounts else "JOD",
+            "totalBalance": float(total_balance),
+            "currency": trimmed_accounts_out[0]["currency"] if trimmed_accounts_out else "JOD",
+            "totalBalanceUpdatedAt": firestore.SERVER_TIMESTAMP,
         }
         if total_savings > 0:
-            user_updates["totalSavings"] = total_savings
+            user_updates["totalSavings"] = float(total_savings)
 
-        batch.update(user_ref, user_updates)
+        batch.set(user_ref, user_updates, merge=True)
         batch.commit()
 
         return {
             "status": "success",
-            "accounts_synced": len(accounts),
-            "totalBalance": total_balance,
-            "totalSavings": total_savings,
+            "accounts_synced": len(trimmed_accounts_out),
+            "totalBalance": float(total_balance),
+            "totalSavings": float(total_savings),
+            "accounts": trimmed_accounts_out,
         }
 
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Accounts API error: {str(e)}")
-
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sync error: {str(e)}")
+    
+    
 @app.get("/get_transactions/{uid}/{account_id}")
 def get_transactions(uid: str, account_id: str):
     """
