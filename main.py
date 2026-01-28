@@ -73,24 +73,25 @@ def sync_accounts(uid: str, customer_id: str):
         user_ref = db.collection("users").document(uid)
         accounts_ref = user_ref.collection("accounts")
 
-        # Step 1: Delete existing accounts (simple approach)
+        # Delete existing *unlinked* accounts only (keep already-linked ones if you want)
+        # If you want to wipe everything every sync, keep your original delete loop.
         for doc in accounts_ref.stream():
-            doc.reference.delete()
+            data = doc.to_dict() or {}
+            if data.get("linked") != True:  # only delete non-linked cache
+                doc.reference.delete()
 
-        # Step 2: Add new trimmed accounts + totals
         batch = db.batch()
-        total_balance = 0.0
-        total_savings = 0.0
-        trimmed_accounts_out = []
+        out = []
 
         for acc in accounts:
             account_id = str(acc.get("accountId", "")).strip()
             if not account_id:
                 continue
 
-            balance = acc.get("availableBalance", {}).get("balanceAmount", 0.0)
+            # Parse balance
+            bal_raw = acc.get("availableBalance", {}).get("balanceAmount", 0)
             try:
-                balance = float(balance)
+                balance = float(bal_raw)
             except Exception:
                 balance = 0.0
 
@@ -99,10 +100,6 @@ def sync_accounts(uid: str, customer_id: str):
             account_type_code = (acc.get("accountType", {}) or {}).get("code", "") or ""
             account_type_name = (acc.get("accountType", {}) or {}).get("name", "") or ""
 
-            account_type_code_u = account_type_code.upper()
-            account_type_name_l = account_type_name.lower()
-            is_savings = ("SAV" in account_type_code_u) or ("savings" in account_type_name_l)
-
             bank_name = (
                 (acc.get("institutionBasicInfo", {}) or {})
                 .get("name", {}) or {}
@@ -110,13 +107,10 @@ def sync_accounts(uid: str, customer_id: str):
 
             iban = (acc.get("mainRoute", {}) or {}).get("address") or ""
 
-            account_status = acc.get("accountStatus", "") or ""
-            locked_for_debit = bool(acc.get("lockedForDebit", False))
-            locked_for_credit = bool(acc.get("lockedForCredit", False))
-
             trimmed = {
                 "accountId": account_id,
-                "linked": False,
+                "provider": "JoPACC",
+                "linked": False,  # <-- IMPORTANT
 
                 "bankName": bank_name,
                 "accountTypeCode": account_type_code,
@@ -124,50 +118,28 @@ def sync_accounts(uid: str, customer_id: str):
 
                 "balanceAmount": balance,
                 "currency": currency,
-
                 "iban": iban,
 
-                # optional (kept flat)
-                "accountStatus": account_status,
-                "lockedForDebit": locked_for_debit,
-                "lockedForCredit": locked_for_credit,
+                "accountStatus": acc.get("accountStatus", "") or "",
+                "lockedForDebit": bool(acc.get("lockedForDebit", False)),
+                "lockedForCredit": bool(acc.get("lockedForCredit", False)),
 
-                "isSavings": is_savings,
                 "syncedAt": firestore.SERVER_TIMESTAMP,
             }
 
-            total_balance += balance
-            if is_savings:
-                total_savings += balance
-
             acc_ref = accounts_ref.document(account_id)
             batch.set(acc_ref, trimmed, merge=True)
-            trimmed_accounts_out.append(trimmed)
+            out.append(trimmed)
 
-        user_updates = {
-            "totalBalance": float(total_balance),
-            "currency": trimmed_accounts_out[0]["currency"] if trimmed_accounts_out else "JOD",
-            "totalBalanceUpdatedAt": firestore.SERVER_TIMESTAMP,
-        }
-        if total_savings > 0:
-            user_updates["totalSavings"] = float(total_savings)
-
-        batch.set(user_ref, user_updates, merge=True)
         batch.commit()
 
-        return {
-            "status": "success",
-            "accounts_synced": len(trimmed_accounts_out),
-            "totalBalance": float(total_balance),
-            "totalSavings": float(total_savings),
-            "accounts": trimmed_accounts_out,
-        }
+        return {"status": "success", "accounts_synced": len(out), "accounts": out}
 
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Accounts API error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Sync error: {str(e)}")
-    
+
 
 @app.get("/get_transactions/{uid}/{account_id}")
 def get_transactions(uid: str, account_id: str):
