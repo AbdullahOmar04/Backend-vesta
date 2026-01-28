@@ -116,7 +116,7 @@ def sync_accounts(uid: str, customer_id: str):
 
             trimmed = {
                 "accountId": account_id,
-                "linked": True,
+                "linked": False,
 
                 "bankName": bank_name,
                 "accountTypeCode": account_type_code,
@@ -168,7 +168,7 @@ def sync_accounts(uid: str, customer_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Sync error: {str(e)}")
     
-    
+
 @app.get("/get_transactions/{uid}/{account_id}")
 def get_transactions(uid: str, account_id: str):
     """
