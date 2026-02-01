@@ -123,12 +123,13 @@ def sync_accounts(uid: str, customer_id: str):
                 "accountStatus": acc.get("accountStatus", "") or "",
                 "lockedForDebit": bool(acc.get("lockedForDebit", False)),
                 "lockedForCredit": bool(acc.get("lockedForCredit", False)),
-
-                "syncedAt": firestore.SERVER_TIMESTAMP,
             }
 
+            # Add SERVER_TIMESTAMP only for Firestore (not serializable to JSON)
+            firestore_data = {**trimmed, "syncedAt": firestore.SERVER_TIMESTAMP}
+
             acc_ref = accounts_ref.document(account_id)
-            batch.set(acc_ref, trimmed, merge=True)
+            batch.set(acc_ref, firestore_data, merge=True)
             out.append(trimmed)
 
         batch.commit()
