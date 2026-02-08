@@ -27,12 +27,15 @@ db = firestore.client()
 
 
 # --- FastAPI App ---
+is_production = os.getenv("ENVIRONMENT") == "production"
+
 app = FastAPI(
     title="Vesta Backend",
     description="MVP backend for syncing accounts and transactions with Firebase",
     version="0.1.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
+    docs_url=None if is_production else "/docs",
+    redoc_url=None if is_production else "/redoc",
+    openapi_url=None if is_production else "/openapi.json",
 )
 
 # --- CORS Configuration --- ADD THIS ENTIRE SECTION
