@@ -39,8 +39,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://vesta-7e96a.web.app",
-        "https://vesta-7e96a.firebaseapp.com",
+        "https://vesta-83939.web.app",
+        "https://vesta-83939.firebaseapp.com",
         "https://vestaapp.co",
         "http://localhost:5173",
         "http://localhost:3000",
