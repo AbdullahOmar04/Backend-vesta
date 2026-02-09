@@ -339,7 +339,7 @@ def _create_consent(tpp_access_token: str, permissions: list[str], expiration_dt
     headers = {
         "Authorization": f"Bearer {tpp_access_token}",
         "x-ftg-institution-application-code": FINX_INSTITUTION_APP_CODE,
-        "x-fapi-interaction-id": interaction_id,
+        "x-interactions-id": interaction_id,
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
@@ -470,9 +470,8 @@ def _comply_headers_psu(psu_access_token: str) -> dict:
     return {
         "Authorization": f"Bearer {psu_access_token}",
         "x-ftg-institution-application-code": FINX_INSTITUTION_APP_CODE,
-        "x-interactions-id": str(uuid.uuid4()),
-        "x-idempotency-key": str(uuid.uuid4()),
         "Accept": "application/json",
+        "x-interactions-id": str(uuid.uuid4()),
     }
 
 
@@ -524,6 +523,13 @@ def ahli_start_link(uid: str):
         "updatedAt": firestore.SERVER_TIMESTAMP,
     })
 
+    # Map state → uid so the callback can look up the user
+    db.collection("linkSessions").document(state).set({
+        "uid": uid,
+        "consentId": consent_id,
+        "createdAt": firestore.SERVER_TIMESTAMP,
+    })
+
     auth_url = _build_auth_url(openid_conf, consent_id=consent_id, state=state)
 
     return {"status": "ok", "consentId": consent_id, "authUrl": auth_url}
@@ -543,19 +549,23 @@ def ahli_callback(request: Request):
     state = (qp.get("state") or "").strip()
     error = (qp.get("error") or "").strip()
     error_desc = (qp.get("error_description") or "").strip()
-    uid = (qp.get("uid") or "").strip()  # OPTIONAL: if you pass uid through state mapping instead, remove this
-
-    # If your redirect does NOT include uid, we’ll map state->uid.
-    if not uid:
-        # Find uid by scanning users is expensive.
-        # Better: store a small "linkSessions" collection keyed by state.
-        return HTMLResponse("Missing uid in callback. Prefer /banks/ahli/start_link/{uid} then include uid in redirect.", status_code=400)
 
     if error:
         return HTMLResponse(f"Link failed: {error} {error_desc}", status_code=400)
 
     if not code or not state:
         return HTMLResponse("Missing code/state", status_code=400)
+
+    # Look up uid from state via linkSessions collection
+    session_ref = db.collection("linkSessions").document(state)
+    session_snap = session_ref.get()
+    if not session_snap.exists:
+        return HTMLResponse("Invalid or expired state", status_code=400)
+
+    session = session_snap.to_dict() or {}
+    uid = (session.get("uid") or "").strip()
+    if not uid:
+        return HTMLResponse("Invalid session: missing uid", status_code=400)
 
     st = _read_provider_state(uid)
     expected_state = (st.get("state") or "").strip()
@@ -592,9 +602,12 @@ def ahli_callback(request: Request):
         "updatedAt": firestore.SERVER_TIMESTAMP,
     })
 
-    # OPTIONAL: auto-sync accounts right after linking
+    # Clean up the link session (one-time use)
+    session_ref.delete()
+
+    # Auto-sync accounts right after linking
     try:
-        _ = _ahli_sync_accounts_internal(uid)
+        _ahli_sync_accounts_internal(uid)
     except Exception:
         pass
 
@@ -690,6 +703,39 @@ def ahli_sync_accounts(uid: str):
     """
     out = _ahli_sync_accounts_internal(uid)
     return {"status": "success", **out}
+
+
+@app.get("/banks/ahli/get_account/{uid}/{account_id}")
+def ahli_get_account(uid: str, account_id: str):
+    """
+    Fetch a single account by id from Comply.
+    GET {{comply-host}}/api/public/jo/v0.4/accounts/{accountId}
+    """
+    psu_token = _ensure_psu_access_token(uid)
+    headers = _comply_headers_psu(psu_token)
+    headers["accountSchema"] = "accountId"
+
+    url = f"{COMPLY_API_BASE}/accounts/{account_id}"
+    r = requests.get(url, headers=headers, timeout=25)
+    r.raise_for_status()
+
+    return {"status": "success", "data": r.json()}
+
+
+@app.get("/banks/ahli/get_balances/{uid}/{account_id}")
+def ahli_get_balances(uid: str, account_id: str):
+    """
+    Fetch all balances of an account from Comply.
+    GET {{comply-host}}/api/public/jo/v0.4/accounts/{accountId}/balances
+    """
+    psu_token = _ensure_psu_access_token(uid)
+    headers = _comply_headers_psu(psu_token)
+
+    url = f"{COMPLY_API_BASE}/accounts/{account_id}/balances"
+    r = requests.get(url, headers=headers, timeout=25)
+    r.raise_for_status()
+
+    return {"status": "success", "data": r.json()}
 
 
 @app.get("/banks/ahli/get_transactions/{uid}/{account_id}")
