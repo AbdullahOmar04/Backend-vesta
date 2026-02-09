@@ -429,13 +429,11 @@ def _pkce_pair() -> tuple[str, str]:
 
 def _build_auth_url(openid_conf: dict, *, consent_id: str, state: str, code_challenge: str) -> str:
     """
-    FIXED for FINX/Comply JO sandbox:
-
-    - Use the sandbox authorization endpoint from OpenID config:
-      https://jo-comply.thefinx.io/sandbox/<institution_app_code>/authorize
-    - DO NOT send a signed `request` JWT (that was triggering "Invalid Request")
-    - Pass `openbanking_intent_id` as a normal query param
-    - Include nonce + PKCE (S256)
+    FINX/Comply JO sandbox authorize:
+    - Must use authorization_endpoint from openid configuration:
+        https://jo-comply.thefinx.io/sandbox/<institution_app_code>/authorize
+    - Include PKCE (S256)
+    - Include a SIGNED `request` JWT containing openbanking_intent_id + standard OIDC claims
     """
     _require_env()
 
@@ -443,7 +441,43 @@ def _build_auth_url(openid_conf: dict, *, consent_id: str, state: str, code_chal
     if not auth_ep:
         raise HTTPException(status_code=500, detail="OpenID config missing authorization_endpoint")
 
+    if not VESTA_SIGNING_KEY:
+        raise HTTPException(status_code=500, detail="Missing env var: VESTA_SIGNING_KEY")
+
+    issuer = (openid_conf.get("issuer") or "").strip()
+    if not issuer:
+        raise HTTPException(status_code=500, detail="OpenID config missing issuer")
+
     nonce = uuid.uuid4().hex
+    now = int(time.time())
+
+    # IMPORTANT: For FINX sandbox authorize, audience commonly expected is the sandbox authorize origin,
+    # not the token issuer. We set aud to BOTH to be safe.
+    aud = [issuer, auth_ep.split("/sandbox/")[0]]  # e.g. [".../realms/open-banking", "https://jo-comply.thefinx.io"]
+
+    request_obj = {
+        "iss": VESTA_CLIENT_ID,
+        "aud": aud,
+        "response_type": "code",
+        "client_id": VESTA_CLIENT_ID,
+        "redirect_uri": AHLI_REDIRECT_URI,
+        "scope": "openid accounts",
+        "state": state,
+        "nonce": nonce,
+
+        # intent
+        "openbanking_intent_id": consent_id,
+
+        # PKCE must match outer params (some servers validate inside request too)
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+
+        "iat": now,
+        "exp": now + 300,
+        "jti": uuid.uuid4().hex,
+    }
+
+    request_jwt = jwt.encode(request_obj, VESTA_SIGNING_KEY, algorithm="RS256")
 
     params = {
         "client_id": VESTA_CLIENT_ID,
@@ -452,16 +486,15 @@ def _build_auth_url(openid_conf: dict, *, consent_id: str, state: str, code_chal
         "redirect_uri": AHLI_REDIRECT_URI,
         "state": state,
         "nonce": nonce,
-
-        # PKCE
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
 
-        # ✅ Intent passed directly for sandbox authorize
-        "openbanking_intent_id": consent_id,
+        # ✅ required for this sandbox authorize
+        "request": request_jwt,
     }
 
     return f"{auth_ep}?{urlencode(params)}"
+
 def _exchange_code_for_psu_token(openid_conf: dict, *, code: str, code_verifier: str) -> dict:
     token_ep = openid_conf.get("token_endpoint") or f"{COMPLY_HOST}/keycloak/realms/open-banking/protocol/openid-connect/token"
     data = {
