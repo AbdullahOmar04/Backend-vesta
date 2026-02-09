@@ -377,13 +377,21 @@ def _tpp_client_credentials_token() -> dict:
     return r.json()
 
 def _openid_config(tpp_access_token: str | None = None) -> dict:
-    issuer = f"{COMPLY_HOST}/keycloak/realms/open-banking"
-    return {
-        "issuer": issuer,
-        "token_endpoint": f"{issuer}/protocol/openid-connect/token",
-        "authorization_endpoint": f"{issuer}/protocol/openid-connect/auth",   # ✅ use this
-        "sandbox_authorization_endpoint": f"{COMPLY_HOST}/sandbox/{FINX_INSTITUTION_APP_CODE}/authorize",  # fallback
-    }
+    # Use FINX OpenID config endpoint you already have in Postman:
+    # /api/public/jo/v0.4/.well-known/openid-configuration
+    r = requests.get(
+        f"{COMPLY_API_BASE}/.well-known/openid-configuration",
+        headers={
+            "Authorization": f"Bearer {tpp_access_token}" if tpp_access_token else "",
+            "x-ftg-institution-application-code": FINX_INSTITUTION_APP_CODE,
+            "Accept": "application/json",
+            "x-interactions-id": str(uuid.uuid4()),
+        },
+        timeout=20,
+    )
+    r.raise_for_status()
+    return r.json()
+
 
 def _create_consent(tpp_access_token: str, permissions: list[str], expiration_dt: datetime) -> dict:
     """
@@ -421,46 +429,21 @@ def _pkce_pair() -> tuple[str, str]:
 
 def _build_auth_url(openid_conf: dict, *, consent_id: str, state: str, code_challenge: str) -> str:
     """
-    Build PSU authorize URL with:
-    - nonce
-    - PKCE (S256)
-    - signed request object that includes intent + standard OIDC fields
+    FIXED for FINX/Comply JO sandbox:
+
+    - Use the sandbox authorization endpoint from OpenID config:
+      https://jo-comply.thefinx.io/sandbox/<institution_app_code>/authorize
+    - DO NOT send a signed `request` JWT (that was triggering "Invalid Request")
+    - Pass `openbanking_intent_id` as a normal query param
+    - Include nonce + PKCE (S256)
     """
     _require_env()
 
-    auth_ep = (
-        openid_conf.get("authorization_endpoint")
-        or openid_conf.get("sandbox_authorization_endpoint")
-    )
+    auth_ep = (openid_conf.get("authorization_endpoint") or "").strip()
     if not auth_ep:
-        raise HTTPException(status_code=500, detail="OpenID config missing authorization endpoint")
-
-    if not VESTA_SIGNING_KEY:
-        raise HTTPException(status_code=500, detail="Missing env var: VESTA_SIGNING_KEY")
+        raise HTTPException(status_code=500, detail="OpenID config missing authorization_endpoint")
 
     nonce = uuid.uuid4().hex
-    now = int(time.time())
-
-    # Keycloak realm issuer (used as aud). If you don't have issuer in openid_conf, fallback is fine.
-    issuer = openid_conf.get("issuer") or f"{COMPLY_HOST}/keycloak/realms/open-banking"
-
-    # Signed "request" object (more complete than just openbanking_intent_id)
-    request_obj = {
-        "iss": VESTA_CLIENT_ID,
-        "aud": issuer,
-        "response_type": "code",
-        "client_id": VESTA_CLIENT_ID,
-        "redirect_uri": AHLI_REDIRECT_URI,
-        "scope": "openid accounts",
-        "state": state,
-        "nonce": nonce,
-        "openbanking_intent_id": consent_id,
-        "iat": now,
-        "exp": now + 300,          # 5 min
-        "jti": uuid.uuid4().hex,
-    }
-
-    request_jwt = jwt.encode(request_obj, VESTA_SIGNING_KEY, algorithm="RS256")
 
     params = {
         "client_id": VESTA_CLIENT_ID,
@@ -470,16 +453,15 @@ def _build_auth_url(openid_conf: dict, *, consent_id: str, state: str, code_chal
         "state": state,
         "nonce": nonce,
 
-        # PKCE (often required)
+        # PKCE
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
 
-        "request": request_jwt,
+        # ✅ Intent passed directly for sandbox authorize
+        "openbanking_intent_id": consent_id,
     }
 
     return f"{auth_ep}?{urlencode(params)}"
-
-
 def _exchange_code_for_psu_token(openid_conf: dict, *, code: str, code_verifier: str) -> dict:
     token_ep = openid_conf.get("token_endpoint") or f"{COMPLY_HOST}/keycloak/realms/open-banking/protocol/openid-connect/token"
     data = {
@@ -936,6 +918,11 @@ def ahli_get_transactions(uid: str, account_id: str):
     batch.commit()
 
     return {"status": "success", "transactions_synced": count}
+
+@app.get("/debug/ahli_env")
+def debug_ahli_env():
+    return {"AHLI_REDIRECT_URI": AHLI_REDIRECT_URI}
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))  # Render sets PORT automatically
