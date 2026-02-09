@@ -1,4 +1,6 @@
+import base64
 from datetime import datetime, timedelta, timezone
+import hashlib
 import time
 import uuid
 from fastapi import FastAPI, HTTPException, Request
@@ -11,6 +13,7 @@ from firebase_admin import credentials, firestore
 import os
 import json
 import uvicorn
+from urllib.parse import urlencode
 
 # --- Firebase Setup ---
 if not firebase_admin._apps:
@@ -374,14 +377,12 @@ def _tpp_client_credentials_token() -> dict:
     return r.json()
 
 def _openid_config(tpp_access_token: str | None = None) -> dict:
-    """
-    Returns known token + authorization endpoints.
-    Discovery (.well-known) doesn't exist on jo-comply, so we hardcode
-    the endpoints from the Postman collection.
-    """
+    issuer = f"{COMPLY_HOST}/keycloak/realms/open-banking"
     return {
-        "token_endpoint": f"{COMPLY_HOST}/keycloak/realms/open-banking/protocol/openid-connect/token",
-        "authorization_endpoint": f"{COMPLY_HOST}/sandbox/{FINX_INSTITUTION_APP_CODE}/authorize",
+        "issuer": issuer,
+        "token_endpoint": f"{issuer}/protocol/openid-connect/token",
+        "authorization_endpoint": f"{issuer}/protocol/openid-connect/auth",   # ✅ use this
+        "sandbox_authorization_endpoint": f"{COMPLY_HOST}/sandbox/{FINX_INSTITUTION_APP_CODE}/authorize",  # fallback
     }
 
 def _create_consent(tpp_access_token: str, permissions: list[str], expiration_dt: datetime) -> dict:
@@ -409,44 +410,84 @@ def _create_consent(tpp_access_token: str, permissions: list[str], expiration_dt
     r.raise_for_status()
     return r.json()
 
-def _build_auth_url(openid_conf: dict, *, consent_id: str, state: str) -> str:
+
+def _b64url(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).decode().rstrip("=")
+
+def _pkce_pair() -> tuple[str, str]:
+    verifier = _b64url(os.urandom(32))
+    challenge = _b64url(hashlib.sha256(verifier.encode()).digest())
+    return verifier, challenge
+
+def _build_auth_url(openid_conf: dict, *, consent_id: str, state: str, code_challenge: str) -> str:
     """
-    Build the browser redirect URL for PSU login/consent approval.
-    The consent_id is embedded in a RS256-signed JWT 'request' parameter.
+    Build PSU authorize URL with:
+    - nonce
+    - PKCE (S256)
+    - signed request object that includes intent + standard OIDC fields
     """
     _require_env()
-    auth_ep = openid_conf.get("authorization_endpoint")
+
+    auth_ep = (
+        openid_conf.get("authorization_endpoint")
+        or openid_conf.get("sandbox_authorization_endpoint")
+    )
     if not auth_ep:
-        raise HTTPException(status_code=500, detail="OpenID config missing authorization_endpoint")
+        raise HTTPException(status_code=500, detail="OpenID config missing authorization endpoint")
 
     if not VESTA_SIGNING_KEY:
         raise HTTPException(status_code=500, detail="Missing env var: VESTA_SIGNING_KEY")
 
-    # Build the signed JWT request object containing the consent ID
-    request_jwt = jwt.encode(
-        {"openbanking_intent_id": consent_id},
-        VESTA_SIGNING_KEY,
-        algorithm="RS256",
-    )
+    nonce = uuid.uuid4().hex
+    now = int(time.time())
 
-    from urllib.parse import urlencode
+    # Keycloak realm issuer (used as aud). If you don't have issuer in openid_conf, fallback is fine.
+    issuer = openid_conf.get("issuer") or f"{COMPLY_HOST}/keycloak/realms/open-banking"
+
+    # Signed "request" object (more complete than just openbanking_intent_id)
+    request_obj = {
+        "iss": VESTA_CLIENT_ID,
+        "aud": issuer,
+        "response_type": "code",
+        "client_id": VESTA_CLIENT_ID,
+        "redirect_uri": AHLI_REDIRECT_URI,
+        "scope": "openid accounts",
+        "state": state,
+        "nonce": nonce,
+        "openbanking_intent_id": consent_id,
+        "iat": now,
+        "exp": now + 300,          # 5 min
+        "jti": uuid.uuid4().hex,
+    }
+
+    request_jwt = jwt.encode(request_obj, VESTA_SIGNING_KEY, algorithm="RS256")
+
     params = {
         "client_id": VESTA_CLIENT_ID,
         "scope": "openid accounts",
         "response_type": "code",
         "redirect_uri": AHLI_REDIRECT_URI,
         "state": state,
+        "nonce": nonce,
+
+        # PKCE (often required)
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+
         "request": request_jwt,
     }
+
     return f"{auth_ep}?{urlencode(params)}"
 
-def _exchange_code_for_psu_token(openid_conf: dict, *, code: str) -> dict:
+
+def _exchange_code_for_psu_token(openid_conf: dict, *, code: str, code_verifier: str) -> dict:
     token_ep = openid_conf.get("token_endpoint") or f"{COMPLY_HOST}/keycloak/realms/open-banking/protocol/openid-connect/token"
     data = {
-        "grant_type": "authorization_code",
-        "code": code,
-        "redirect_uri": AHLI_REDIRECT_URI,
-        "scope": "accounts",
+    "grant_type": "authorization_code",
+    "client_id": VESTA_CLIENT_ID,
+    "code": code,
+    "redirect_uri": AHLI_REDIRECT_URI,
+    "code_verifier": code_verifier,
     }
     r = requests.post(token_ep, data=data, auth=(VESTA_CLIENT_ID, VESTA_CLIENT_SECRET), timeout=25)
     r.raise_for_status()
@@ -455,9 +496,9 @@ def _exchange_code_for_psu_token(openid_conf: dict, *, code: str) -> dict:
 def _refresh_psu_token(openid_conf: dict, *, refresh_token: str) -> dict:
     token_ep = openid_conf.get("token_endpoint") or f"{COMPLY_HOST}/keycloak/realms/open-banking/protocol/openid-connect/token"
     data = {
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_token,
-        "scope": "accounts",
+    "grant_type": "refresh_token",
+    "client_id": VESTA_CLIENT_ID,
+    "refresh_token": refresh_token,
     }
     r = requests.post(token_ep, data=data, auth=(VESTA_CLIENT_ID, VESTA_CLIENT_SECRET), timeout=25)
     r.raise_for_status()
@@ -572,6 +613,7 @@ def ahli_start_link(uid: str):
         raise HTTPException(status_code=500, detail=f"Consent response missing consentId: {consent}")
 
     state = uuid.uuid4().hex
+    code_verifier, code_challenge = _pkce_pair()
 
     _write_provider_state(uid, {
         "provider": AHLI_PROVIDER_LABEL,
@@ -584,25 +626,25 @@ def ahli_start_link(uid: str):
         "updatedAt": firestore.SERVER_TIMESTAMP,
     })
 
-    # Map state → uid so the callback can look up the user
     db.collection("linkSessions").document(state).set({
         "uid": uid,
         "consentId": consent_id,
+        "code_verifier": code_verifier,   # ✅ REQUIRED
         "createdAt": firestore.SERVER_TIMESTAMP,
     })
 
-    auth_url = _build_auth_url(openid_conf, consent_id=consent_id, state=state)
+    auth_url = _build_auth_url(
+        openid_conf,
+        consent_id=consent_id,
+        state=state,
+        code_challenge=code_challenge,     # ✅ REQUIRED
+    )
 
     return {"status": "ok", "consentId": consent_id, "authUrl": auth_url}
 
 
 @app.get("/banks/ahli/callback", response_class=HTMLResponse)
 def ahli_callback(request: Request):
-    """
-    This MUST be your registered redirect_uri.
-    It receives ?code=...&state=...
-    Exchanges code -> PSU tokens, stores them, and (optionally) syncs accounts.
-    """
     _require_env()
 
     qp = dict(request.query_params)
@@ -617,27 +659,34 @@ def ahli_callback(request: Request):
     if not code or not state:
         return HTMLResponse("Missing code/state", status_code=400)
 
-    # Look up uid from state via linkSessions collection
     session_ref = db.collection("linkSessions").document(state)
     session_snap = session_ref.get()
     if not session_snap.exists:
         return HTMLResponse("Invalid or expired state", status_code=400)
 
     session = session_snap.to_dict() or {}
+
     uid = (session.get("uid") or "").strip()
     if not uid:
         return HTMLResponse("Invalid session: missing uid", status_code=400)
+
+    code_verifier = (session.get("code_verifier") or "").strip()
+    if not code_verifier:
+        return HTMLResponse("Invalid session: missing code_verifier", status_code=400)
 
     st = _read_provider_state(uid)
     expected_state = (st.get("state") or "").strip()
     if not expected_state or expected_state != state:
         return HTMLResponse("Invalid state", status_code=400)
 
-    # Exchange code
     tpp = _tpp_client_credentials_token()
     openid_conf = _openid_config(tpp.get("access_token"))
 
-    tokens = _exchange_code_for_psu_token(openid_conf, code=code)
+    tokens = _exchange_code_for_psu_token(
+        openid_conf,
+        code=code,
+        code_verifier=code_verifier,
+    )
 
     access_token = tokens.get("access_token")
     refresh_token = tokens.get("refresh_token")
@@ -663,16 +712,13 @@ def ahli_callback(request: Request):
         "updatedAt": firestore.SERVER_TIMESTAMP,
     })
 
-    # Clean up the link session (one-time use)
     session_ref.delete()
 
-    # Auto-sync accounts right after linking
     try:
         _ahli_sync_accounts_internal(uid)
     except Exception:
         pass
 
-    # Return a simple success page (you can deep-link back to the app here)
     return HTMLResponse(
         "<h3>✅ Ahli linked successfully.</h3><p>You can close this window and return to Vesta.</p>",
         status_code=200,
