@@ -3,6 +3,7 @@ import time
 import uuid
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware  # ADD THIS
 import requests
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -11,21 +12,49 @@ import json
 import uvicorn
 
 # --- Firebase Setup ---
-firebase_key = os.environ.get("FIREBASE_KEY")
-if not firebase_key:
-    raise Exception("FIREBASE_KEY environment variable not set.")
+if not firebase_admin._apps:
+    # Try to load credentials from JSON string (for Render/production)
+    firebase_cred_json = os.getenv("FIREBASE_CREDENTIALS")
 
-cred = credentials.Certificate(json.loads(firebase_key))
-firebase_admin.initialize_app(cred)
+    if firebase_cred_json:
+        # Parse JSON string from environment variable
+        cred_dict = json.loads(firebase_cred_json)
+        cred = credentials.Certificate(cred_dict)
+    else:
+        # Fallback to file path (for local development)
+        firebase_cred_path = os.getenv("FIREBASE_CRED_PATH", "serviceAccountKey.json")
+        cred = credentials.Certificate(firebase_cred_path)
+
+    firebase_admin.initialize_app(cred)
+
 db = firestore.client()
 
+
 # --- FastAPI App ---
+is_production = os.getenv("ENVIRONMENT") == "production"
+
 app = FastAPI(
     title="Vesta Backend",
     description="MVP backend for syncing accounts and transactions with Firebase",
     version="0.1.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
+    docs_url=None if is_production else "/docs",
+    redoc_url=None if is_production else "/redoc",
+    openapi_url=None if is_production else "/openapi.json",
+)
+
+# --- CORS Configuration --- ADD THIS ENTIRE SECTION
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://vesta-83939.web.app",
+        "https://vesta-83939.firebaseapp.com",
+        "https://vestaapp.co",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.get("/")
@@ -48,53 +77,79 @@ def sync_accounts(uid: str, customer_id: str):
     try:
         response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
-        accounts = response.json().get("data", [])
+        accounts = response.json().get("data", []) or []
 
         user_ref = db.collection("users").document(uid)
         accounts_ref = user_ref.collection("accounts")
 
-        # Step 1: Delete existing accounts
+        # Delete existing *unlinked* accounts only (keep already-linked ones if you want)
+        # If you want to wipe everything every sync, keep your original delete loop.
         for doc in accounts_ref.stream():
-            doc.reference.delete()
+            data = doc.to_dict() or {}
+            if data.get("linked") != True:  # only delete non-linked cache
+                doc.reference.delete()
 
-        # Step 2: Add new accounts and calculate totals
         batch = db.batch()
-        total_balance = 0.0
-        total_savings = 0.0
+        out = []
 
         for acc in accounts:
-            balance = acc.get("availableBalance", {}).get("balanceAmount", 0.0)
-            total_balance += balance
+            account_id = str(acc.get("accountId", "")).strip()
+            if not account_id:
+                continue
 
-            # Detect savings accounts
-            account_type_code = acc.get("accountType", {}).get("code", "").upper()
-            account_type_name = acc.get("accountType", {}).get("name", "").lower()
-            if "SAV" in account_type_code or "savings" in account_type_name:
-                total_savings += balance
+            # Parse balance
+            bal_raw = acc.get("availableBalance", {}).get("balanceAmount", 0)
+            try:
+                balance = float(bal_raw)
+            except Exception:
+                balance = 0.0
 
-            acc_ref = accounts_ref.document(acc["accountId"])
-            batch.set(acc_ref, acc)
+            currency = (acc.get("accountCurrency") or "JOD").strip()
 
-        # Step 3: Update user document totals
-        user_updates = {
-            "totalBalance": total_balance,
-            "currency": accounts[0]["accountCurrency"] if accounts else "JOD",
-        }
-        if total_savings > 0:
-            user_updates["totalSavings"] = total_savings
+            account_type_code = (acc.get("accountType", {}) or {}).get("code", "") or ""
+            account_type_name = (acc.get("accountType", {}) or {}).get("name", "") or ""
 
-        batch.update(user_ref, user_updates)
+            bank_name = (
+                (acc.get("institutionBasicInfo", {}) or {})
+                .get("name", {}) or {}
+            ).get("enName") or "Unknown Bank"
+
+            iban = (acc.get("mainRoute", {}) or {}).get("address") or ""
+
+            trimmed = {
+                "accountId": account_id,
+                "provider": "JoPACC",
+                "linked": False,  # <-- IMPORTANT
+
+                "bankName": bank_name,
+                "accountTypeCode": account_type_code,
+                "accountTypeName": account_type_name,
+
+                "balanceAmount": balance,
+                "currency": currency,
+                "iban": iban,
+
+                "accountStatus": acc.get("accountStatus", "") or "",
+                "lockedForDebit": bool(acc.get("lockedForDebit", False)),
+                "lockedForCredit": bool(acc.get("lockedForCredit", False)),
+            }
+
+            # Add SERVER_TIMESTAMP only for Firestore (not serializable to JSON)
+            firestore_data = {**trimmed, "syncedAt": firestore.SERVER_TIMESTAMP}
+
+            acc_ref = accounts_ref.document(account_id)
+            batch.set(acc_ref, firestore_data, merge=True)
+            out.append(trimmed)
+
         batch.commit()
 
-        return {
-            "status": "success",
-            "accounts_synced": len(accounts),
-            "totalBalance": total_balance,
-            "totalSavings": total_savings,
-        }
+        return {"status": "success", "accounts_synced": len(out), "accounts": out}
 
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Accounts API error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sync error: {str(e)}")
+
 
 @app.get("/get_transactions/{uid}/{account_id}")
 def get_transactions(uid: str, account_id: str):
