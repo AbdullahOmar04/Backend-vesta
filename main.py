@@ -371,17 +371,14 @@ def _tpp_client_credentials_token() -> dict:
 
 def _openid_config(tpp_access_token: str | None = None) -> dict:
     """
-    Get authorization_endpoint + token_endpoint.
-    Some tenants require Authorization Bearer tpp token. We support both.
+    Returns known token + authorization endpoints.
+    Discovery (.well-known) doesn't exist on jo-comply, so we hardcode
+    the endpoints from the Postman collection.
     """
-    headers = {}
-    if tpp_access_token:
-        headers["Authorization"] = f"Bearer {tpp_access_token}"
-
-    r = requests.get(FINX_OPENID_CONFIG_URL, headers=headers, timeout=20)
-    # If this fails in your tenant, point FINX_OPENID_CONFIG_URL to the exact Postman endpoint.
-    r.raise_for_status()
-    return r.json()
+    return {
+        "token_endpoint": f"{COMPLY_HOST}/keycloak/realms/open-banking/protocol/openid-connect/token",
+        "authorization_endpoint": f"{COMPLY_HOST}/sandbox/{FINX_INSTITUTION_APP_CODE}/authorize",
+    }
 
 def _create_consent(tpp_access_token: str, permissions: list[str], expiration_dt: datetime) -> dict:
     """
