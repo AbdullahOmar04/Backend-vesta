@@ -4,6 +4,7 @@ import uuid
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware  # ADD THIS
+import jwt
 import requests
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -325,6 +326,9 @@ FINX_INSTITUTION_APP_CODE = os.getenv("FINX_INSTITUTION_APP_CODE", "")  # e.g. "
 # Your backend callback (must match what you registered on Comply)
 AHLI_REDIRECT_URI = os.getenv("AHLI_REDIRECT_URI", "")  # e.g. "https://backend-vesta.onrender.com/banks/ahli/callback"
 
+# RSA private key (PEM) for signing the JWT request parameter in the authorize URL
+VESTA_SIGNING_KEY = os.getenv("VESTA_SIGNING_KEY", "")
+
 # OpenID discovery: if Comply has a specific endpoint in Postman collection, set it here.
 # If empty, we fall back to standard .well-known path (may or may not work for your tenant).
 FINX_OPENID_CONFIG_URL = os.getenv(
@@ -408,27 +412,32 @@ def _create_consent(tpp_access_token: str, permissions: list[str], expiration_dt
 def _build_auth_url(openid_conf: dict, *, consent_id: str, state: str) -> str:
     """
     Build the browser redirect URL for PSU login/consent approval.
-
-    NOTE: Some Comply setups require consent_id as part of a signed request object.
-    If your tenant needs that, tell me what the Postman “authorize” request looks like
-    and I’ll adjust this builder.
+    The consent_id is embedded in a RS256-signed JWT 'request' parameter.
     """
     _require_env()
     auth_ep = openid_conf.get("authorization_endpoint")
     if not auth_ep:
         raise HTTPException(status_code=500, detail="OpenID config missing authorization_endpoint")
 
-    params = {
-        "response_type": "code",
-        "client_id": VESTA_CLIENT_ID,
-        "redirect_uri": AHLI_REDIRECT_URI,
-        "scope": "accounts",
-        "state": state,
-        # Common pattern in some sandbox setups:
-        "consentId": consent_id,
-    }
-    # Manual encode to avoid importing urllib in your file (optional)
+    if not VESTA_SIGNING_KEY:
+        raise HTTPException(status_code=500, detail="Missing env var: VESTA_SIGNING_KEY")
+
+    # Build the signed JWT request object containing the consent ID
+    request_jwt = jwt.encode(
+        {"openbanking_intent_id": consent_id},
+        VESTA_SIGNING_KEY,
+        algorithm="RS256",
+    )
+
     from urllib.parse import urlencode
+    params = {
+        "client_id": VESTA_CLIENT_ID,
+        "scope": "openid accounts",
+        "response_type": "code",
+        "redirect_uri": AHLI_REDIRECT_URI,
+        "state": state,
+        "request": request_jwt,
+    }
     return f"{auth_ep}?{urlencode(params)}"
 
 def _exchange_code_for_psu_token(openid_conf: dict, *, code: str) -> dict:
