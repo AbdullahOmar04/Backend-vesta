@@ -1,0 +1,2642 @@
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: OpenAPI - AIS
+  description: Account Information Services
+
+tags:
+  - name: Accounts
+    description: Account Services 
+  - name: Beneficiaries
+    description: Beneficiaries Services
+  - name: Balances
+    description: Balances Services
+  - name: Transactions
+    description: Transactions Services
+  - name: Standing Orders & Scheduled Payments
+    description: Standing Orders & Scheduled Payments Services
+  - name: Client (TPP) API
+    description: Client & user token management
+  - name: AisConsent
+    description: List of APIs for consent management
+
+paths:
+  '/account-access-consents':
+    post:
+      tags:
+        - Client (TPP) API
+      summary: Creates a new AIS consent based on the input transaction date range and permissions.
+      security:
+        - oAuth2ClientCredentials: [accounts]
+      operationId: createAisConsent
+      requestBody:
+        description: Consent
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAisConsentRequest'
+        required: true
+      responses:
+        '201':
+          description: Successful completion of operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateConsentResponse'
+        '400':
+          $ref: '#/components/responses/ciamErrorResponse'
+        '401':
+          description: unauthorized
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_invalid_token'
+                  - $ref: '#/components/schemas/ciam_error_response'
+        '403':
+          description: forbidden
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_client_error'
+                  - $ref: '#/components/schemas/ciam_error_response'
+        # '404':
+        #   $ref: '#/components/responses/ciamErrorResponse'
+        # '405':
+        #   $ref: '#/components/responses/ciamErrorResponse'
+        # '406':
+        #   $ref: '#/components/responses/ciamErrorResponse'
+        '408':
+          $ref: '#/components/responses/ciamErrorResponse'
+        '500':
+          $ref: '#/components/responses/ciamErrorResponse'
+  
+  '/account-access-consents/{consentRef}':
+    get:
+      tags:
+        - AisConsent
+      summary: Returns information about the AIS consent using an external consent identifier.
+      security:
+        - oAuth2ClientCredentials: [accounts]
+      operationId: getAisConsent
+      parameters:
+        - name: consentRef
+          in: path
+          description: AIS consent external identifier.
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: d071de9d-c794-4077-9a6d-de8cf92310d1
+      responses:
+        '200':
+          description: Successful completion of operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAisConsentResponse'
+        '400':
+          $ref: '#/components/responses/ciamErrorResponse'
+        '401':
+          description: unauthorized
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_invalid_token'
+                  - $ref: '#/components/schemas/ciam_error_response'
+        '403':
+          description: forbidden
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_client_error'
+                  - $ref: '#/components/schemas/ciam_error_response'
+        '404':
+          $ref: '#/components/responses/ciamErrorResponse'
+        # '405':
+        #   $ref: '#/components/responses/ciamErrorResponse'
+        # '406':
+        #   $ref: '#/components/responses/ciamErrorResponse'
+        '408':
+          $ref: '#/components/responses/ciamErrorResponse'
+        '500':
+          $ref: '#/components/responses/ciamErrorResponse'
+    delete:
+      tags:
+        - AisConsent
+      summary: Delete consent by extended identifier
+      security:
+        - oAuth2ClientCredentials: [accounts]
+      operationId: deleteAisConsent
+      parameters:
+        - name: consentRef
+          in: path
+          description: Consent extended identifier
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Successful completion of operation
+        '400':
+          $ref: '#/components/responses/ciamErrorResponse'
+        '401':
+          description: unauthorized
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_invalid_token'
+                  - $ref: '#/components/schemas/ciam_error_response'
+        '403':
+          description: forbidden
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_client_error'
+                  - $ref: '#/components/schemas/ciam_error_response'
+        # '404':
+        #   $ref: '#/components/responses/ciamErrorResponse'
+        # '405':
+        #   $ref: '#/components/responses/ciamErrorResponse'
+        # '406':
+        #   $ref: '#/components/responses/ciamErrorResponse'
+        '408':
+          $ref: '#/components/responses/ciamErrorResponse'
+        '500':
+          $ref: '#/components/responses/ciamErrorResponse'
+  '/accounts':
+    get:
+      tags:
+        - Accounts
+      summary: get a list of accounts
+      security:
+        - oAuth2AuthCode: [accounts]
+      description: retrieve list of accounts with information
+      operationId: getAccounts
+      parameters:
+        # - $ref: '#/components/parameters/institutionCode'
+        # not supported as cboj will only return non-dormant (active) accounts
+        # - $ref: '#/components/parameters/accountStatus'
+        # not supported
+        # - $ref: '#/components/parameters/accountType'
+        - $ref: '#/components/parameters/skip'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/sort'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/x-interactions-id'
+        - $ref: '#/components/parameters/x-idempotency-key'
+        - $ref: '#/components/parameters/x-financial-id'
+        # - $ref: '#/components/parameters/x-jws-signature'
+        - $ref: '#/components/parameters/x-auth-date'
+        - $ref: '#/components/parameters/x-customer-id'
+        - $ref: '#/components/parameters/x-customer-ip-address'
+        - $ref: '#/components/parameters/x-customer-user-agent'
+      responses:
+        '200':
+          $ref: '#/components/responses/getAccounts'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_missing_token'
+                  - $ref: '#/components/schemas/error_genericSystemError'
+                  - $ref: '#/components/schemas/error_badRequest'
+        '401':
+          description: unauthorized
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_invalid_token'
+                  - $ref: '#/components/schemas/error_unauthorized'
+        '403':
+          $ref: '#/components/responses/forbidden'
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_data_notFound'
+                  - $ref: '#/components/schemas/endpoint_notFound'
+        '405':
+          $ref: '#/components/responses/methodNotAllowed'
+        '406':
+          $ref: '#/components/responses/notAcceptable'
+        '415':
+          $ref: '#/components/responses/unsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/tooManyRequests'
+        '500':
+          $ref: '#/components/responses/internalServerError'
+        '503':
+          $ref: '#/components/responses/serviceUnavailable'
+
+  '/accounts/{accountId}':
+    get:
+      tags:
+        - Accounts
+      summary: get a specific account's data
+      security:
+        - oAuth2AuthCode: [accounts]
+      description: retrieve account information
+      operationId: getAccount
+      parameters:
+        # - $ref: '#/components/parameters/institutionCode'
+        - $ref: '#/components/parameters/accountId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/x-interactions-id'
+        - $ref: '#/components/parameters/x-idempotency-key'
+        - $ref: '#/components/parameters/x-financial-id'
+        # - $ref: '#/components/parameters/x-jws-signature'
+        - $ref: '#/components/parameters/x-auth-date'
+        - $ref: '#/components/parameters/x-customer-id'
+        - $ref: '#/components/parameters/x-customer-ip-address'
+        - $ref: '#/components/parameters/x-customer-user-agent'
+      responses:
+        '200':
+          $ref: '#/components/responses/getAccount'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_missing_token'
+                  - $ref: '#/components/schemas/error_genericSystemError'
+                  - $ref: '#/components/schemas/error_badRequest'
+        '401':
+          description: unauthorized
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_invalid_token'
+                  - $ref: '#/components/schemas/error_unauthorized'
+        '403':
+          $ref: '#/components/responses/forbidden'
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_data_notFound'
+                  - $ref: '#/components/schemas/endpoint_notFound'
+        '405':
+          $ref: '#/components/responses/methodNotAllowed'
+        '406':
+          $ref: '#/components/responses/notAcceptable'
+        '415':
+          $ref: '#/components/responses/unsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/tooManyRequests'
+        '500':
+          $ref: '#/components/responses/internalServerError'
+        '503':
+          $ref: '#/components/responses/serviceUnavailable'
+
+  '/accounts/address/{accountAddress}':
+    get:
+      tags:
+        - Accounts
+      summary: get a specific account's data by Schema & Address (Iban)
+      security:
+        - oAuth2AuthCode: [accounts]
+      description: retrieve an account information by Schema & Address (Iban)
+      operationId: getAccountByAddress
+      parameters:
+        # - $ref: '#/components/parameters/institutionCode'
+        - $ref: '#/components/parameters/accountAddress'
+        - $ref: '#/components/parameters/accountSchema'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/x-interactions-id'
+        - $ref: '#/components/parameters/x-idempotency-key'
+        - $ref: '#/components/parameters/x-financial-id'
+        # - $ref: '#/components/parameters/x-jws-signature'
+        - $ref: '#/components/parameters/x-auth-date'
+        - $ref: '#/components/parameters/x-customer-id'
+        - $ref: '#/components/parameters/x-customer-ip-address'
+        - $ref: '#/components/parameters/x-customer-user-agent'
+      responses:
+        '200':
+          $ref: '#/components/responses/getAccount'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_missing_token'
+                  - $ref: '#/components/schemas/error_genericSystemError'
+                  - $ref: '#/components/schemas/error_badRequest'
+        '401':
+          description: unauthorized
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_invalid_token'
+                  - $ref: '#/components/schemas/error_unauthorized'
+        '403':
+          $ref: '#/components/responses/forbidden'
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_data_notFound'
+                  - $ref: '#/components/schemas/endpoint_notFound'
+        '405':
+          $ref: '#/components/responses/methodNotAllowed'
+        '406':
+          $ref: '#/components/responses/notAcceptable'
+        '415':
+          $ref: '#/components/responses/unsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/tooManyRequests'
+        '500':
+          $ref: '#/components/responses/internalServerError'
+        '503':
+          $ref: '#/components/responses/serviceUnavailable'
+
+  '/beneficiaries':
+    get:
+      tags:
+        - Beneficiaries
+      summary: get beneficiaries information
+      security:
+        - oAuth2AuthCode: [accounts]
+      description: retrieve a list of beneficiaries
+      operationId: getBeneficiaries
+      parameters:
+        # - $ref: '#/components/parameters/institutionCode'
+        # for CBOJ beneficiaries are retrieved by customerId
+        # - $ref: '#/components/parameters/accountId'
+        - $ref: '#/components/parameters/beneficiaryType'
+        - $ref: '#/components/parameters/skip'
+        - $ref: '#/components/parameters/limit'
+        # for CBOJ beneficiary objects don't have date to sort by
+        # - $ref: '#/components/parameters/sort'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/x-interactions-id'
+        - $ref: '#/components/parameters/x-idempotency-key'
+        - $ref: '#/components/parameters/x-financial-id'
+        # - $ref: '#/components/parameters/x-jws-signature'
+        - $ref: '#/components/parameters/x-auth-date'
+        - $ref: '#/components/parameters/x-customer-id'
+        - $ref: '#/components/parameters/x-customer-ip-address'
+        - $ref: '#/components/parameters/x-customer-user-agent'
+      responses:
+        '200':
+          $ref: '#/components/responses/getBeneficiaries'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_missing_token'
+                  - $ref: '#/components/schemas/error_genericSystemError'
+                  - $ref: '#/components/schemas/error_badRequest'
+        '401':
+          description: unauthorized
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_invalid_token'
+                  - $ref: '#/components/schemas/error_unauthorized'
+        '403':
+          $ref: '#/components/responses/forbidden'
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_data_notFound'
+                  - $ref: '#/components/schemas/endpoint_notFound'
+        '405':
+          $ref: '#/components/responses/methodNotAllowed'
+        '406':
+          $ref: '#/components/responses/notAcceptable'
+        '415':
+          $ref: '#/components/responses/unsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/tooManyRequests'
+        '500':
+          $ref: '#/components/responses/internalServerError'
+        '503':
+          $ref: '#/components/responses/serviceUnavailable'
+
+  '/beneficiaries/{beneficiaryId}':
+    get:
+      tags:
+        - Beneficiaries
+      summary: get beneficiary information
+      security:
+        - oAuth2AuthCode: [accounts]
+      description: retrieve a specific beneficiary data
+      operationId: getBeneficiary
+      parameters:
+        # - $ref: '#/components/parameters/institutionCode'
+         # for CBOJ beneficiaries are retrieved by customerId
+        # - $ref: '#/components/parameters/accountId'
+        - $ref: '#/components/parameters/beneficiaryId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/x-interactions-id'
+        - $ref: '#/components/parameters/x-idempotency-key'
+        - $ref: '#/components/parameters/x-financial-id'
+        # - $ref: '#/components/parameters/x-jws-signature'
+        - $ref: '#/components/parameters/x-auth-date'
+        - $ref: '#/components/parameters/x-customer-id'
+        - $ref: '#/components/parameters/x-customer-ip-address'
+        - $ref: '#/components/parameters/x-customer-user-agent'
+      responses:
+        '200':
+          $ref: '#/components/responses/getBeneficiary'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_missing_token'
+                  - $ref: '#/components/schemas/error_genericSystemError'
+                  - $ref: '#/components/schemas/error_badRequest'
+        '401':
+          description: unauthorized
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_invalid_token'
+                  - $ref: '#/components/schemas/error_unauthorized'
+        '403':
+          $ref: '#/components/responses/forbidden'
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_data_notFound'
+                  - $ref: '#/components/schemas/endpoint_notFound'
+        '405':
+          $ref: '#/components/responses/methodNotAllowed'
+        '406':
+          $ref: '#/components/responses/notAcceptable'
+        '415':
+          $ref: '#/components/responses/unsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/tooManyRequests'
+        '500':
+          $ref: '#/components/responses/internalServerError'
+        '503':
+          $ref: '#/components/responses/serviceUnavailable'
+
+  '/accounts/{accountId}/balances':
+    get:
+      tags:
+        - Balances
+      summary: get beneficiaries information
+      security:
+        - oAuth2AuthCode: [accounts]
+      description: retrieve a list of beneficiaries
+      operationId: getBalances
+      parameters:
+        # - $ref: '#/components/parameters/institutionCode'
+        - $ref: '#/components/parameters/accountId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/x-interactions-id'
+        - $ref: '#/components/parameters/x-idempotency-key'
+        - $ref: '#/components/parameters/x-financial-id'
+        # - $ref: '#/components/parameters/x-jws-signature'
+        - $ref: '#/components/parameters/x-auth-date'
+        - $ref: '#/components/parameters/x-customer-id'
+        - $ref: '#/components/parameters/x-customer-ip-address'
+        - $ref: '#/components/parameters/x-customer-user-agent'
+      responses:
+        '200':
+          $ref: '#/components/responses/getBalances'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_missing_token'
+                  - $ref: '#/components/schemas/error_genericSystemError'
+                  - $ref: '#/components/schemas/error_badRequest'
+        '401':
+          description: unauthorized
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_invalid_token'
+                  - $ref: '#/components/schemas/error_unauthorized'
+        '403':
+          $ref: '#/components/responses/forbidden'
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_data_notFound'
+                  - $ref: '#/components/schemas/endpoint_notFound'
+        '405':
+          $ref: '#/components/responses/methodNotAllowed'
+        '406':
+          $ref: '#/components/responses/notAcceptable'
+        '415':
+          $ref: '#/components/responses/unsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/tooManyRequests'
+        '500':
+          $ref: '#/components/responses/internalServerError'
+        '503':
+          $ref: '#/components/responses/serviceUnavailable'
+
+  '/accounts/{accountId}/transactions':
+    get:
+      tags:
+        - Transactions
+      summary: get transactions information
+      security:
+        - oAuth2AuthCode: [accounts]
+      description: retrieve list of transactions
+      operationId: getTransactions
+      parameters:
+        # parameters, relevant for the moment for cboj case, are commented out
+        # - $ref: '#/components/parameters/institutionCode'
+        - $ref: '#/components/parameters/accountId'
+        # - $ref: '#/components/parameters/transactionType'
+        # - $ref: '#/components/parameters/instrumentCode'
+        # - $ref: '#/components/parameters/transactionStatus'
+        - $ref: '#/components/parameters/transactionAmountFrom'
+        - $ref: '#/components/parameters/transactionAmountTo'
+        # - $ref: '#/components/parameters/transactionCurrency'
+        # - $ref: '#/components/parameters/transactionPresentmentFrom'
+        # - $ref: '#/components/parameters/transactionPresentmentTo'
+        - $ref: '#/components/parameters/transactionSettlementFrom'
+        - $ref: '#/components/parameters/transactionSettlementTo'
+        - $ref: '#/components/parameters/transactionDirection'
+        - $ref: '#/components/parameters/skip'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/sort'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/x-interactions-id'
+        - $ref: '#/components/parameters/x-idempotency-key'
+        - $ref: '#/components/parameters/x-financial-id'
+        # - $ref: '#/components/parameters/x-jws-signature'
+        - $ref: '#/components/parameters/x-auth-date'
+        - $ref: '#/components/parameters/x-customer-id'
+        - $ref: '#/components/parameters/x-customer-ip-address'
+        - $ref: '#/components/parameters/x-customer-user-agent'
+      responses:
+        '200':
+          $ref: '#/components/responses/getTransactions'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_missing_token'
+                  - $ref: '#/components/schemas/error_genericSystemError'
+                  - $ref: '#/components/schemas/error_badRequest'
+        '401':
+          description: unauthorized
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_invalid_token'
+                  - $ref: '#/components/schemas/error_unauthorized'
+        '403':
+          $ref: '#/components/responses/forbidden'
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_data_notFound'
+                  - $ref: '#/components/schemas/endpoint_notFound'
+        '405':
+          $ref: '#/components/responses/methodNotAllowed'
+        '406':
+          $ref: '#/components/responses/notAcceptable'
+        '415':
+          $ref: '#/components/responses/unsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/tooManyRequests'
+        '500':
+          $ref: '#/components/responses/internalServerError'
+        '503':
+          $ref: '#/components/responses/serviceUnavailable'
+
+  '/accounts/{accountId}/transactions/{transactionId}':
+    get:
+      tags:
+        - Transactions
+      summary: get one transaction information
+      security:
+        - oAuth2AuthCode: [accounts]
+      description: retrieve a specific transaction object
+      operationId: getTransaction
+      parameters:
+        # - $ref: '#/components/parameters/institutionCode'
+        - $ref: '#/components/parameters/accountId'
+        - $ref: '#/components/parameters/transactionId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/x-interactions-id'
+        - $ref: '#/components/parameters/x-idempotency-key'
+        - $ref: '#/components/parameters/x-financial-id'
+        # - $ref: '#/components/parameters/x-jws-signature'
+        - $ref: '#/components/parameters/x-auth-date'
+        - $ref: '#/components/parameters/x-customer-id'
+        - $ref: '#/components/parameters/x-customer-ip-address'
+        - $ref: '#/components/parameters/x-customer-user-agent'
+      responses:
+        '200':
+          $ref: '#/components/responses/getTransaction'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_missing_token'
+                  - $ref: '#/components/schemas/error_genericSystemError'
+                  - $ref: '#/components/schemas/error_badRequest'
+        '401':
+          description: unauthorized
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_invalid_token'
+                  - $ref: '#/components/schemas/error_unauthorized'
+        '403':
+          $ref: '#/components/responses/forbidden'
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_data_notFound'
+                  - $ref: '#/components/schemas/endpoint_notFound'
+        '405':
+          $ref: '#/components/responses/methodNotAllowed'
+        '406':
+          $ref: '#/components/responses/notAcceptable'
+        '415':
+          $ref: '#/components/responses/unsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/tooManyRequests'
+        '500':
+          $ref: '#/components/responses/internalServerError'
+        '503':
+          $ref: '#/components/responses/serviceUnavailable'
+
+  '/accounts/{accountId}/sosp':
+    get:
+      tags:
+        - Standing Orders & Scheduled Payments
+      summary: get Standing Orders & Scheduled Payments information
+      security:
+        - oAuth2AuthCode: [accounts]
+      description: retrieve list of Standing Orders & Scheduled Payments
+      operationId: getSOSPs
+      parameters:
+        # - $ref: '#/components/parameters/institutionCode'
+        - $ref: '#/components/parameters/accountId'
+        # not supported
+        # - $ref: '#/components/parameters/SOSPType'
+        # - $ref: '#/components/parameters/SOSPStatus'
+        # - $ref: '#/components/parameters/SOSPFrequency'
+        - $ref: '#/components/parameters/skip'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/sort'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/x-interactions-id'
+        - $ref: '#/components/parameters/x-idempotency-key'
+        - $ref: '#/components/parameters/x-financial-id'
+        # - $ref: '#/components/parameters/x-jws-signature'
+        - $ref: '#/components/parameters/x-auth-date'
+        - $ref: '#/components/parameters/x-customer-id'
+        - $ref: '#/components/parameters/x-customer-ip-address'
+        - $ref: '#/components/parameters/x-customer-user-agent'
+      responses:
+        '200':
+          $ref: '#/components/responses/getSOSPs'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_missing_token'
+                  - $ref: '#/components/schemas/error_genericSystemError'
+                  - $ref: '#/components/schemas/error_badRequest'
+        '401':
+          description: unauthorized
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_invalid_token'
+                  - $ref: '#/components/schemas/error_unauthorized'
+        '403':
+          $ref: '#/components/responses/forbidden'
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_data_notFound'
+                  - $ref: '#/components/schemas/endpoint_notFound'
+        '405':
+          $ref: '#/components/responses/methodNotAllowed'
+        '406':
+          $ref: '#/components/responses/notAcceptable'
+        '415':
+          $ref: '#/components/responses/unsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/tooManyRequests'
+        '500':
+          $ref: '#/components/responses/internalServerError'
+        '503':
+          $ref: '#/components/responses/serviceUnavailable'
+
+  '/accounts/{accountId}/sosp/{sospId}':
+    get:
+      tags:
+        - Standing Orders & Scheduled Payments
+      summary: get a specific Standing Order & Scheduled Payments object
+      security:
+        - oAuth2AuthCode: [accounts]
+      description: retrieve a specific Standing Order & Scheduled Payments object
+      operationId: getSOSP
+      parameters:
+        # - $ref: '#/components/parameters/institutionCode'
+        - $ref: '#/components/parameters/accountId'
+        - $ref: '#/components/parameters/sospId'
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/x-interactions-id'
+        - $ref: '#/components/parameters/x-idempotency-key'
+        - $ref: '#/components/parameters/x-financial-id'
+        # - $ref: '#/components/parameters/x-jws-signature'
+        - $ref: '#/components/parameters/x-auth-date'
+        - $ref: '#/components/parameters/x-customer-id'
+        - $ref: '#/components/parameters/x-customer-ip-address'
+        - $ref: '#/components/parameters/x-customer-user-agent'
+      responses:
+        '200':
+          $ref: '#/components/responses/getSOSP'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_missing_token'
+                  - $ref: '#/components/schemas/error_genericSystemError'
+                  - $ref: '#/components/schemas/error_badRequest'
+        '401':
+          description: unauthorized
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_invalid_token'
+                  - $ref: '#/components/schemas/error_unauthorized'
+        '403':
+          $ref: '#/components/responses/forbidden'
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/error_data_notFound'
+                  - $ref: '#/components/schemas/endpoint_notFound'
+        '405':
+          $ref: '#/components/responses/methodNotAllowed'
+        '406':
+          $ref: '#/components/responses/notAcceptable'
+        '415':
+          $ref: '#/components/responses/unsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/tooManyRequests'
+        '500':
+          $ref: '#/components/responses/internalServerError'
+        '503':
+          $ref: '#/components/responses/serviceUnavailable'
+
+components:
+  securitySchemes:
+    oAuth2ClientCredentials:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /ob/oauth2/token
+          scopes:
+            accounts: read customer's account information
+    oAuth2AuthCode:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: /ob/web/login
+          tokenUrl: /ob/oauth2/token
+          scopes:
+            accounts: read customer's account information
+  schemas:
+    AisStatus:
+      type: string
+      description: The current status of the consent.
+      enum:
+        - New
+        - Active
+        - Rejected
+        - Revoked
+        - Expired
+      example: New
+    AisPermissions:
+      type: array
+      description: List of account permissions granted by the consent.
+      items:
+        type: string
+        enum:
+          - ReadAccounts
+          - ReadBalances
+          - ReadStandingOrders&ScheduledPayments
+          - ReadBeneficiaries
+          - ReadTransactions
+      uniqueItems: true
+      example:
+        - "ReadAccounts"
+        - "ReadBalances"
+        - "ReadStandingOrders&ScheduledPayments"
+        - "ReadBeneficiaries"
+        - "ReadTransactions"
+    ClientTokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: "sgQ336T7LBRDLOEfWGByM9pftvQ"
+        expires_in:
+          type: integer
+          example: 300
+        refresh_expires_in:
+          type: integer
+          example: 0
+        token_type:
+          type: string
+          example: "Bearer"
+        not-before-policy:
+          type: integer
+          example: 0
+        scope:
+          type: string
+          example: ""
+    CreateAisConsentRequest:
+      required:
+        - transactionFromDateTime
+        - transactionToDateTime
+      type: object
+      properties:
+        transactionFromDateTime:
+          type: string
+          description: Account transactions start date with time.
+          format: date-time
+          example: 2000-01-01T00:00:00+00:00
+        transactionToDateTime:
+          type: string
+          description: Account transactions end date with time.
+          format: date-time
+          example: 2052-12-02T00:00:00+00:00
+        permissions:
+          $ref: '#/components/schemas/AisPermissions'
+      description: Account consent
+    CreateConsentResponse:
+      type: object
+      description: Create consent response
+      required:
+        - consentRef
+        - status
+        - createDateTime
+        - updateDateTime
+        - expirationDateTime
+        - transactionFromDateTime
+        - transactionToDateTime
+        - permissions
+        - loginUrls
+      properties:
+        consentRef:
+          type: string
+          format: uuid
+          description: AIS consent external identifier.
+          example: 23b1600c-ec0b-4e4f-97e7-ab65b99787e7
+        status:
+          $ref: '#/components/schemas/AisStatus'
+        createDateTime:
+          type: string
+          description: The date with time of the consent creation.
+          format: date-time
+          example: 2024-06-02T09:30:17+00:00
+        updateDateTime:
+          type: string
+          description: The date with time of the last consent attributes update.
+          format: date-time
+          example: 2024-06-02T09:30:17+00:00
+        expirationDateTime:
+          type: string
+          description: The date with time until the consent is considered valid.
+          format: date-time
+          example: 2024-12-02T00:00:00+00:00
+        transactionFromDateTime:
+          type: string
+          description: Account transactions start date with time.
+          format: date-time
+          example: 2000-01-01T00:00:00+00:00
+        transactionToDateTime:
+          type: string
+          description: Account transactions end date with time.
+          format: date-time
+          example: 2052-12-02T00:00:00+00:00
+        permissions:
+          $ref: '#/components/schemas/AisPermissions'
+        loginUrls:
+          type: array
+          items:
+            type: string
+          example:
+            - "https://{hostname}/ob/web/login?consentRef={consentRef}"
+          description: A list of possible login page URLs.
+    AccountItem:
+      type: object
+      properties:
+        number:
+          type: string
+          description: Account number.
+          example: "00234124345693023"
+        currency:
+          type: string
+          description: Account currency.
+          example: JOD
+      description: Account consent representation for mobile
+    GetAisConsentResponse:
+      type: object
+      description: Account information services consent data.
+      required: 
+        - consentRef
+        - status
+        - createDateTime
+        - updateDateTime
+        - expirationDateTime
+        - transactionFromDateTime
+        - transactionToDateTime
+        - permissions
+      properties:
+        consentRef:
+          type: string
+          format: uuid
+          description: AIS consent external identifier.
+          example: 23b1600c-ec0b-4e4f-97e7-ab65b99787e7
+        status:
+          $ref: '#/components/schemas/AisStatus'
+        createDateTime:
+          type: string
+          description: The date with time of the consent creation.
+          format: date-time
+          example: 2024-06-02T09:30:17+00:00
+        updateDateTime:
+          type: string
+          description: The date with time of the last consent attributes update.
+          format: date-time
+          example: 2024-06-02T09:30:17+00:00
+        expirationDateTime:
+          type: string
+          description: The date with time until the consent is considered valid.
+          format: date-time
+          example: 2024-12-02T00:00:00+00:00
+        transactionFromDateTime:
+          type: string
+          description: Account transactions start date with time.
+          format: date-time
+          example: 2000-01-01T00:00:00+00:00
+        transactionToDateTime:
+          type: string
+          description: Account transactions end date with time.
+          format: date-time
+          example: 2052-12-02T00:00:00+00:00
+        permissions:
+          $ref: '#/components/schemas/AisPermissions'
+
+## AIS API objects
+    account:
+      type: object
+      required: 
+        - accountId
+        - status
+        - mainRoute
+        - accountType
+        - currencies
+        - institutionBasicInfo
+        - branchBasicInfo
+        - openingDate
+        - isSharedAccount
+      properties:
+        accountId:
+          type: string
+          pattern: '^[0-9]{7,}$'
+          example: '1234567'
+        status:
+          type: string
+          format: str
+          example: ACTIVE
+        # statusUpdateDateTime:
+        #   $ref: '#/components/schemas/dateTime'
+        mainRoute:
+          $ref: '#/components/schemas/routeComplexType'
+        accountType:
+          type: object
+          properties:
+            code:
+              type: string
+              format: str
+              example: "1101"
+            name:
+              type: string
+              format: str
+              example: "Regular-Current"
+        currencies:
+          type: string
+          format: ISO 4217
+          example: JOD
+        institutionBasicInfo:
+          $ref: '#/components/schemas/institutionBasicInfoComplexType'
+        branchBasicInfo:
+          $ref: '#/components/schemas/branchBasicInfoComplexType'
+        openingDate:
+          $ref: '#/components/schemas/dateTime'
+        isSharedAccount:
+          type: boolean
+          example: false
+        lockedForDebit:
+          type: boolean
+          example: true
+        availableBalance:
+          $ref: '#/components/schemas/amountComplexType'
+    beneficiaries:
+      type: object
+      required: 
+        - beneficiaryId
+        - beneficiaryType
+        - accountBasicInfo
+      properties:
+        beneficiaryId:
+          type: string
+          format: str
+          example: "1001"
+        beneficiaryType:
+          type: string
+          enum:
+            - Local
+            - Internal
+            - International
+            - Cliq
+            - Domestic
+          format: str
+          example: Local
+        beneficiaryName:
+          type: string
+          format: str
+          example: SWG
+        beneficiaryNickname:
+          type: string
+          format: str
+          example: SWG charity account
+        institutionBasicInfo:
+          $ref: '#/components/schemas/institutionBasicInfoComplexType'
+        accountBasicInfo:
+          $ref: '#/components/schemas/accountBasicInfoComplexType'
+    balances:
+      type: object
+      required: 
+        - availableBalance
+        - currentBalance
+        - creditlimit
+        - amortisedLimit
+      properties:
+        availableBalance:
+          $ref: '#/components/schemas/amountComplexType'
+        currentBalance:
+          $ref: '#/components/schemas/amountComplexType'
+        creditlimit:
+          $ref: '#/components/schemas/amountComplexType'
+        amortisedLimit:
+          $ref: '#/components/schemas/amountComplexType'
+    transactions:
+      type: object
+      required:
+        - transactionId
+        - transactionType
+        - status
+        - amount
+        - settlementDateTime
+        - presentementDateTime
+        - transactionDirection
+      properties:
+        transactionId:
+          type: string
+          example: "206225498211001.010001"
+        transactionType:
+          type: string
+          description: transaction type description
+          example: Account Transaction
+        status:
+          type: string
+          format: str
+          example: 'accepted'
+        # transactionReferences:
+        #   type: array
+        #   description: List of transaction references that could be ids of the transaction, message, instruction, or such
+        #   items: 
+        #     type: object
+        #     properties:
+        #       code:
+        #         type: string
+        #         example: msgId
+        #       desc:
+        #         type: string
+        #         example: str123
+        amount:
+          $ref: '#/components/schemas/amountComplexType'
+        # transactionTypeCode:
+        #   type: object
+        settlementDateTime:
+          $ref: '#/components/schemas/dateTime'
+        presentementDateTime:
+          $ref: '#/components/schemas/dateTime'
+        # charges:
+        #   $ref: '#/components/schemas/amountComplexType'
+        #   description: Charges and fees of this transaction
+        transactionDirection:
+          type: string
+          enum:
+          - credit
+          - debit
+          example: debit
+    SOSP:
+      type: object
+      required:
+        - sospId
+        - sospType
+        - sospStatus
+        - sospNickname
+        - sospBeneficiary
+        - paymentSchedule
+      properties:
+        sospId:
+          type: string
+          example: "5005811.1"
+        sospType:
+          type: string
+          example: Account Transfer
+        sospStatus:
+          type: string
+          example: active
+        sospNickname:
+          type: string
+          example: Account Transfer
+        sospBeneficiary:
+          type: object
+          properties:
+            accountBasicInfo:
+              $ref: '#/components/schemas/accountBasicInfoComplexType'
+        paymentSchedule:
+          type: object
+          required:
+            - frequencyInfo
+            - numberOfCompletedPayments
+            - remainingPayments
+            - firstPaymentDateTime
+            - finalPaymentDateTime
+          properties:
+            frequencyInfo:
+              type: object
+              required:
+                - frequency
+                - setNumberOfPayments
+                - setAmount
+                - expirationDate
+              properties:
+                frequency:
+                  type: string
+                  format: str
+                  example: monthly
+                setNumberOfPayments:
+                  type: integer
+                  format: int32
+                  example: 12
+                setAmount:
+                  $ref: '#/components/schemas/amountComplexType'
+                expirationDate:
+                  $ref: '#/components/schemas/dateTime'
+            numberOfCompletedPayments:
+              type: number
+              format: int32
+              example: 2
+            remainingPayments:
+              type: number
+              format: int32
+              example: 10
+            firstPaymentAmount:
+              $ref: '#/components/schemas/amountComplexType'
+            firstPaymentDateTime:
+              $ref: '#/components/schemas/dateTime'
+              example: 2025-09-15T10:30:00Z
+            finalPaymentDateTime:
+              $ref: '#/components/schemas/dateTime'
+              example: 2026-08-15T10:30:00Z
+    amountComplexType:
+      type: object
+      required: 
+        - amount
+        - currency
+      properties:
+        amount:
+          type: number
+          format: float
+          example: 25.001
+        currency:
+          type: string
+          format: ISO 4217
+          example: JOD
+    routeComplexType:
+      type: object
+      required: 
+        - schema
+        - address
+      properties:
+        schema:
+          type: string
+          format: str
+          example: IBAN
+        address:
+          type: string
+          format: str
+          example: JO27CBJO0010000000000000000001
+    name:
+      type: object
+      required: 
+        - enName
+      properties:
+        enName:
+          type: string
+          format: str
+          example: "Capital Bank of Jordan"
+    nameComplexType:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/name'
+        - type: object
+      # properties:
+      #   tradeName:
+      #     $ref: '#/components/schemas/name'
+    institutionBasicInfoComplexType:
+      type: object
+      required: 
+        - institutionType
+        - institutionIdentification
+        - name
+      properties:
+        institutionType:
+          type: string
+          format: str
+          example: BANK
+        institutionIdentification:
+          allOf:
+          - $ref: '#/components/schemas/routeComplexType'
+          - type: object
+          properties:
+            schema:
+              example: bicCode
+            address:
+              example: EFBKJOAM
+        name:
+          $ref: '#/components/schemas/nameComplexType'
+        # institutionPhoneNumber:
+        #   $ref: '#/components/schemas/phoneNumber'
+    branchBasicInfoComplexType:
+      type: object
+      required: 
+        - branchIdentification
+        - name
+      properties:
+        branchIdentification:
+          allOf:
+          - $ref: '#/components/schemas/routeComplexType'
+          - type: object
+          properties:
+            schema:
+              example: branchCode
+            address:
+              example: JO0010009
+        name:
+          $ref: '#/components/schemas/nameComplexType'
+        # branchPhoneNumber:
+        #   $ref: '#/components/schemas/phoneNumber'
+    accountBasicInfoComplexType:
+      type: object
+      required: 
+        - accountId
+        - mainRoute
+      properties:
+        accountId:
+          type: string
+          format: str
+          example: str123
+        mainRoute:
+          $ref: '#/components/schemas/routeComplexType'
+    routingsComplexType:
+      type: array
+      items:
+        allOf:
+        - $ref: '#/components/schemas/routeComplexType'
+        - type: object
+        properties:
+          schema:
+            example: CLIQ
+          address:
+            example: HSM
+    dayComplexType:
+      type: object
+      properties:
+        isWorkingDay:
+          type: boolean
+          example: true
+        openingTime:
+          type: string
+          format: time(HH:mm)
+          example: '10:00'
+        closingTime:
+          type: string
+          format: time(HH:mm)
+          example: '18:00'
+        secondOpeningTime:
+          type: string
+          format: time(HH:mm)
+          example: '19:00'
+        secondClosingTime:
+          type: string
+          format: time(HH:mm)
+          example: '23:00'
+    workingHoursComplexType:
+      type: object
+      properties:
+        sunday:
+          $ref: '#/components/schemas/dayComplexType'
+        monday:
+          $ref: '#/components/schemas/dayComplexType'
+        tuesday:
+          $ref: '#/components/schemas/dayComplexType'
+        wednesday:
+          $ref: '#/components/schemas/dayComplexType'
+        thursday:
+          $ref: '#/components/schemas/dayComplexType'
+        friday:
+          $ref: '#/components/schemas/dayComplexType'
+        saturday:
+          $ref: '#/components/schemas/dayComplexType'
+    dateTime:
+      type: string
+      format: date-time(YYYY-MM-DDTHH:mm:ssZ)
+      example: 2006-09-15T10:30:00Z
+    phoneNumber:
+      type: string
+      format: E.164
+      example: '+962761231234'
+    website:
+      type: string
+      format: URL Living Standard
+      example: www.jopacc.com
+    countryInfo:
+      type: object
+      properties:
+        countryCode:
+          type: string
+          format: ISO 3166-1 alpha-2
+          example: JO
+        countryName:
+          type: string
+          example: Jordan
+    location:
+      type: object
+      properties:
+        latitude:
+          type: number
+          format: float
+          example: 31.9504003
+        longitude:
+          type: number
+          format: float
+          example: 35.8648691
+    addresslines:
+      type: array
+      items: 
+        type: string
+      example:
+        - Amman, Jordan
+        - Wadi Saqra
+        - Arar Street
+    addressComplexType:
+      type: object
+      properties:
+        addresslines:
+          $ref: '#/components/schemas/addresslines'
+        city:
+          type: string
+          example: Amman
+        state:
+          type: string
+          example: Capital
+        postcode:
+          type: string
+          example: "11962"
+        countryInfo:
+          $ref: '#/components/schemas/countryInfo'
+        location:
+          $ref: '#/components/schemas/location'
+        phoneNumber:
+          $ref: '#/components/schemas/phoneNumber'
+        website:
+          $ref: '#/components/schemas/website'
+        moreInfo:
+          type: string
+          example: textarea
+    accessibilityFeatures:
+      type: array
+      items:
+        type: string
+      example:
+        - wheelchair
+        - brailleSupported
+    feeSurcharge:
+      type: object
+      properties:
+        feeSurchargeType:
+          type: string
+          example: cashWithdrawalNationalFee #cashWithdrawalInternationalFee balanceInquiryFee
+        institutionCode:
+          allOf:
+          - $ref: '#/components/schemas/routeComplexType'
+          - type: object
+          properties:
+            schema:
+              example: bicCode
+            address:
+              example: JORDJOA0
+        amount:
+          $ref: '#/components/schemas/amountComplexType'
+    feeSurchargeComplexType:
+      type: array
+      format: object
+      items:
+        $ref: '#/components/schemas/feeSurcharge'
+    defaultFeeSurcharges:
+      type: object
+      properties:
+        defaultCashWithdrawalNationalFee:
+          $ref: '#/components/schemas/amountComplexType'
+        defaultCashWithdrawalInternationalFee:
+          $ref: '#/components/schemas/amountComplexType'
+        defaultBalanceInquiryFee:
+          $ref: '#/components/schemas/amountComplexType'
+    links: 
+      type: object
+      properties:
+        accounts:
+          type: object 
+          properties: 
+            self: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}'
+            beneficiaries: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}/beneficiaries'
+            balances: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}/balances'
+            transactions: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}/transactions'
+            SOSP: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}/sosp'
+            offers: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}/offers'
+            CAF: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}/CAF'
+            institution: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/institution'
+        beneficiaries:
+          type: object 
+          properties: 
+            self: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}/beneficiaries'
+            account: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}'
+            institution: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/institution'
+        balances:
+          type: object 
+          properties: 
+            self: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}/balances'
+            account: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}'
+            institution: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/institution'
+        transactions:
+          type: object 
+          properties: 
+            self: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}/transactions/{transactionId}'
+            account: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}'
+            institution: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/institution'
+            FXs: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/institution/FXs/{currency}'
+        SOSP:
+          type: object 
+          properties: 
+            self: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}/sosp/{sospId}'
+            beneficiary: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}/beneficiaries/{beneficiaryId}'
+            account: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}'
+            institution: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/institution'
+        offers:
+          type: object 
+          properties: 
+            self: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}/offers/{offerId}'
+            account: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}'
+            product: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}/products/{productId}'
+            institution: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/institution'
+        CAF:
+          type: object 
+          properties: 
+            account: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}'
+            institution: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/institution'
+        FI:
+          type: object 
+          properties: 
+            self: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/institution'
+        branches:
+          type: object 
+          properties: 
+            self: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/institution/branches/{branchId}'
+            account: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/accounts/{accountId}'
+            institution: 
+              type: object
+              properties:
+                href:
+                  type: string
+                  example: '/institution'
+        pagination:
+          type: object 
+          properties:
+            self:
+              description: links to the current page of resource
+              properties:
+                href:
+                  type: string
+                  example: "https://{hostname}/{resource}"
+            next:
+              description: links to the next page of resource
+              properties:
+                href:
+                  type: string
+                  example: "https://{hostname}/{resource}?skip={X}&limit={Y}"
+            prev:
+              description: links to the previous page of resource
+              properties:
+                href:
+                  type: string
+                  example: "https://{hostname}/{resource}?skip={X}&limit={Y}"
+            last:
+              description: links to the last page of resource
+              properties:
+                href:
+                  type: string
+                  example: "https://{hostname}/{resource}?skip={X}&limit={Y}"
+    error_genericSystemError:
+      type: object
+      required:
+        - id
+        - code
+        - desc
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the error response. Used for logging and tracking errors
+          example: 2c8579d1-8ccb-49c1-b64d-ed2a5b357c8f
+          format: UUIDv4
+        code:
+          type: string
+          description: High-level error code
+          example: server.error
+        desc:
+          type: string
+          description: Descriptive message of the error
+          example: Bad request
+        errors:
+          type: array
+          description: List of specific errors. Used to display multiple errors if more than one exist
+          items: 
+            type: object
+            properties:
+              code:
+                type: string
+                description: Specific error code
+                example: server.error.bad.request
+              desc:
+                type: string
+                description: Descriptive message of the specific error
+                example: The data could not be retrieved. Please, consult the support team for the cause of the failure
+    error_data_notFound:
+      type: object
+      required:
+        - id
+        - code
+        - desc
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the error response. Used for logging and tracking errors
+          example: 2c8579d1-8ccb-49c1-b64d-ed2a5b357c8f
+          format: UUIDv4
+        code:
+          type: string
+          description: High-level error code
+          example: client.error
+        desc:
+          type: string
+          description: Descriptive message of the error
+          example: The server cannot process the request due to a client error
+        errors:
+          type: array
+          description: List of specific errors. Used to display multiple errors if more than one exist
+          items: 
+            type: object
+            properties:
+              code:
+                type: string
+                description: Specific error code
+                example: client.error.notFound
+              desc:
+                type: string
+                description: Descriptive message of the specific error
+                example: No records were found that matched the selection criteria
+
+    error_badRequest:
+      type: object
+      required:
+        - id
+        - code
+        - desc
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the error response. Used for logging and tracking errors
+          example: 2c8579d1-8ccb-49c1-b64d-ed2a5b357c8f
+          format: UUIDv4
+        code:
+          type: string
+          description: High-level error code
+          example: http.request.invalid
+        desc:
+          type: string
+          description: Descriptive message of the error
+          example: Invalid request parameters
+        errors:
+          type: array
+          description: List of specific errors. Used to display multiple errors if more than one exist
+          items: 
+            type: object
+            properties:
+              code:
+                type: string
+                description: Specific error code
+                example: http.headers.invalid
+              desc:
+                type: string
+                description: Descriptive message of the specific error
+                example: Required header x-interactions-id is missing
+    error_client_error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error description
+          example: "Invalid Client."
+    error_invalid_token:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error description
+          example: "Invalid token."
+    error_missing_token:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error description
+          example: "JWT Token is required."
+    error_unauthorized:
+      type: object
+      required:
+        - id
+        - code
+        - desc
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the error response. Used for logging and tracking errors
+          example: 2c8579d1-8ccb-49c1-b64d-ed2a5b357c8f
+          format: UUIDv4
+        code:
+          type: string
+          description: High-level error code
+          example: http.auth.invalid
+        desc:
+          type: string
+          description: Descriptive message of the error
+          example: Invalid authentication credentials
+        errors:
+          type: array
+          description: List of specific errors. Used to display multiple errors if more than one exist
+          items: 
+            type: object
+            properties:
+              code:
+                type: string
+                description: Specific error code
+                example: http.auth.header.missing
+              desc:
+                type: string
+                description: Descriptive message of the specific error
+                example: Authentication header is missing. Please include the 'Authorization' header in your request.
+    error_forbidden:
+      type: object
+      required:
+        - id
+        - code
+        - desc
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the error response. Used for logging and tracking errors
+          example: 2c8579d1-8ccb-49c1-b64d-ed2a5b357c8f
+          format: UUIDv4
+        code:
+          type: string
+          description: High-level error code
+          example: http.auth.forbidden
+        desc:
+          type: string
+          description: Descriptive message of the error
+          example: Insufficient privileges. Access to the requested resource is forbidden
+        errors:
+          type: array
+          description: List of specific errors. Used to display multiple errors if more than one exist
+          items: 
+            type: object
+            properties:
+              code:
+                type: string
+                description: Specific error code
+                example: http.auth.role.insufficient
+              desc:
+                type: string
+                description: Descriptive message of the specific error
+                example: You do not have the necessary permissions to access this resource
+    endpoint_notFound:
+      type: object
+      required:
+        - id
+        - code
+        - desc
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the error response. Used for logging and tracking errors
+          example: 2c8579d1-8ccb-49c1-b64d-ed2a5b357c8f
+          format: UUIDv4
+        code:
+          type: string
+          description: High-level error code
+          example: resource.notFound
+        desc:
+          type: string
+          description: Descriptive message of the error
+          example: The requested resource could not be found
+        errors:
+          type: array
+          description: List of specific errors. Used to display multiple errors if more than one exist
+          items: 
+            type: object
+            properties:
+              code:
+                type: string
+                description: Specific error code
+                example: http.url.invalid.endpoint
+              desc:
+                type: string
+                description: Descriptive message of the specific error
+                example: The requested endpoint is not valid. Please check the url and try again
+    error_methodNotAllowed:
+      type: object
+      required:
+        - id
+        - code
+        - desc
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the error response. Used for logging and tracking errors
+          example: 2c8579d1-8ccb-49c1-b64d-ed2a5b357c8f
+          format: UUIDv4
+        code:
+          type: string
+          description: High-level error code
+          example: http.method.invalid
+        desc:
+          type: string
+          description: Descriptive message of the error
+          example: The requested resource could not be found
+        errors:
+          type: array
+          description: The requested HTTP method is not allowed for this resource
+          items: 
+            type: object
+            properties:
+              code:
+                type: string
+                description: Specific error code
+                example: http.method.invalid.patch
+              desc:
+                type: string
+                description: Descriptive message of the specific error
+                example: PATCH method is not supported for this resource
+    error_notAcceptable:
+      type: object
+      required:
+        - id
+        - code
+        - desc
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the error response. Used for logging and tracking errors
+          example: 2c8579d1-8ccb-49c1-b64d-ed2a5b357c8f
+          format: UUIDv4
+        code:
+          type: string
+          description: High-level error code
+          example: http.headers.invalid
+        desc:
+          type: string
+          description: Descriptive message of the error
+          example: The requested content cannot be served in the specified format
+        errors:
+          type: array
+          description: The requested HTTP method is not allowed for this resource
+          items: 
+            type: object
+            properties:
+              code:
+                type: string
+                description: Specific error code
+                example: http.content.unsupportedFormat
+              desc:
+                type: string
+                description: Descriptive message of the specific error
+                example: The requested format is not supported. Please specify a different format
+    error_unsupportedMediaType:
+      type: object
+      required:
+        - id
+        - code
+        - desc
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the error response. Used for logging and tracking errors
+          example: 2c8579d1-8ccb-49c1-b64d-ed2a5b357c8f
+          format: UUIDv4
+        code:
+          type: string
+          description: High-level error code
+          example: media.unsupportedEncoding
+        desc:
+          type: string
+          description: Descriptive message of the error
+          example: The requested media encoding is not supported
+        errors:
+          type: array
+          description: The requested HTTP method is not allowed for this resource
+          items: 
+            type: object
+            properties:
+              code:
+                type: string
+                description: Specific error code
+                example: media.unsupportedEncoding.appXml
+              desc:
+                type: string
+                description: Descriptive message of the specific error
+                example: The requested format 'application/xml' is not supported
+    error_tooManyRequests:
+      type: object
+      required:
+        - id
+        - code
+        - desc
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the error response. Used for logging and tracking errors
+          example: 2c8579d1-8ccb-49c1-b64d-ed2a5b357c8f
+          format: UUIDv4
+        code:
+          type: string
+          description: High-level error code
+          example: rateLimit.exceeded
+        desc:
+          type: string
+          description: Descriptive message of the error
+          example: The rate limit for requests has been exceeded
+        errors:
+          type: array
+          description: The requested HTTP method is not allowed for this resource
+          items: 
+            type: object
+            properties:
+              code:
+                type: string
+                description: Specific error code
+                example: rateLimit.exceeded
+              desc:
+                type: string
+                description: Descriptive message of the specific error
+                example: The maximum number of requests '500/min' has been reached. Try again in '53 seconds'
+    error_internalServerError:
+      type: object
+      required:
+        - id
+        - code
+        - desc
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the error response. Used for logging and tracking errors
+          example: 2c8579d1-8ccb-49c1-b64d-ed2a5b357c8f
+          format: UUIDv4
+        code:
+          type: string
+          description: High-level error code
+          example: server.error
+        desc:
+          type: string
+          description: Descriptive message of the error
+          example: The rate limit for requests has been exceeded
+        errors:
+          type: array
+          description: The requested HTTP method is not allowed for this resource
+          items: 
+            type: object
+            properties:
+              code:
+                type: string
+                description: Specific error code
+                example: server.error.database
+              desc:
+                type: string
+                description: Descriptive message of the specific error
+                example: Error accessing the database. Please contact the development support team or try again later
+    error_serviceUnavailable:
+      type: object
+      required:
+        - id
+        - code
+        - desc
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the error response. Used for logging and tracking errors
+          example: 2c8579d1-8ccb-49c1-b64d-ed2a5b357c8f
+          format: UUIDv4
+        code:
+          type: string
+          description: High-level error code
+          example: server.service.error
+        desc:
+          type: string
+          description: Descriptive message of the error
+          example: The rate limit for requests has been exceeded
+        errors:
+          type: array
+          description: The requested HTTP method is not allowed for this resource
+          items: 
+            type: object
+            properties:
+              code:
+                type: string
+                description: Specific error code
+                example: server.service.maintenance
+              desc:
+                type: string
+                description: Descriptive message of the specific error
+                example: The service is temporarily down for maintenance. Please try again later
+    ciam_error_response:
+      type: object
+      required:
+        - id
+        - code
+        - desc
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the error response. Used for logging and tracking errors
+          example: 2c8579d1-8ccb-49c1-b64d-ed2a5b357c8f
+          format: UUIDv4
+        code:
+          type: string
+          description: High-level error code
+          example: ""
+        desc:
+          type: string
+          description: Descriptive message of the error
+          example: ""
+  responses:
+    ciamErrorResponse:
+      description: ciam error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ciam_error_response'
+    getAccounts:
+      description: successful
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: '#/components/schemas/account'
+              links:
+                $ref: '#/components/schemas/links/properties/pagination'
+    getAccount:
+      description: successful
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/account'
+    getBeneficiaries:
+      description: successful
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: '#/components/schemas/beneficiaries'
+              links:
+                $ref: '#/components/schemas/links/properties/pagination'
+    getBeneficiary:
+      description: successful
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/beneficiaries'
+    getBalances:
+      description: successful
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/balances'
+    getBalance:
+      description: successful
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/balances'
+    getTransactions:
+      description: successful
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: '#/components/schemas/transactions'
+              links:
+                $ref: '#/components/schemas/links/properties/pagination'
+    getTransaction:
+      description: successful
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/transactions'
+    getSOSPs:
+      description: successful
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SOSP'
+              links:
+                $ref: '#/components/schemas/links/properties/pagination'
+    getSOSP:
+      description: successful
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SOSP'
+    errorDataNotFound:
+      description: 404 Not Found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/error_data_notFound'
+    errorGenericSystemError:
+      description: 400 Bad Request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/error_genericSystemError'
+    badRequest:
+      description: 400 Bad Request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/error_badRequest'
+    unauthorized:
+      description: 401 Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/error_unauthorized'
+    forbidden:
+      description: 403 Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/error_forbidden'
+    endpoint_notFound:
+      description: 404 Not Found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/endpoint_notFound'
+    methodNotAllowed:
+      description: 405 Method Not Allowed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/error_methodNotAllowed'
+    notAcceptable:
+      description: 406 Not Acceptable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/error_notAcceptable'
+    unsupportedMediaType:
+      description: 415 Unsupported Media Type
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/error_unsupportedMediaType'
+    tooManyRequests:
+      description: 429 Too Many Requests
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/error_tooManyRequests'
+    internalServerError:
+      description: 500 Internal Service Error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/error_internalServerError'
+    serviceUnavailable:
+      description: 503 Service Unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/error_serviceUnavailable'
+  parameters: 
+    Authorization:
+      name: Authorization
+      in: header
+      description: Authorization header in which the token is placed
+      required: true
+      schema:
+        type: string
+    x-interactions-id:
+      name: x-interactions-id
+      in: header
+      description: Unique id for the interaction, used in all request and responses that are related
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    x-idempotency-key:
+      name: x-idempotency-key
+      in: header
+      description: Unique id that is generated for each request and response. Used for tracking and to check for duplicate calls
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    x-financial-id:
+      name: x-financial-id
+      in: header
+      description: Unique id for the Financial Institution; BIC or Pseudo-BIC code of the sender
+      required: false
+      schema:
+        type: string
+    x-auth-date:
+      name: x-auth-date
+      in: header
+      description: Date and time of the last authentication of the User by the TPP
+      required: false
+      schema:
+        type: string
+    x-jws-signature:
+      name: x-jws-signature
+      in: header
+      description: JWS Signature, refer to security reference
+      required: false
+      schema:
+        type: string
+    x-customer-id:
+      name: x-customer-id
+      in: header
+      description: Unique id for the User
+      required: false
+      schema:
+        type: string
+    x-customer-ip-address:
+      name: x-customer-ip-address
+      in: header
+      description: The User's IP address if the user is currently logged in with the TPP
+      required: false
+      schema:
+        type: string
+    x-customer-user-agent:
+      name: x-customer-user-agent
+      in: header
+      description: Indicates the user-agent the User is using. Helps protecting from comprimised devices
+      required: false
+      schema:
+        type: string
+    skip:
+      name: skip
+      in: query
+      description: The number of resources to skip showing in this response. Used for pagination. Used for pagination
+      required: false
+      schema:
+        type: integer
+        default: 0
+    limit:
+      name: limit
+      in: query
+      description: The maximum number of resources to return in the response. Used for pagination
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+    sort:
+      name: sort
+      in: query
+      description: Sorting the response by creation date of the resources (ascending or descending)
+      required: false
+      schema:
+        type: string
+        enum:
+          - asc
+          - desc
+        default: desc
+    accountId:
+      name: accountId
+      in: path
+      description: Account id of the user
+      required: true
+      schema:
+        type: string
+    accountAddress:
+      name: accountAddress
+      in: path
+      description: Account Address of the user
+      required: true
+      schema:
+        type: string
+    accountSchema:
+      name: accountSchema
+      in: query
+      description: Schema of the account address of the user. Currently supports 'IBAN'
+      required: true
+      schema:
+        type: string
+        enum:
+          - IBAN
+    beneficiaryId:
+      name: beneficiaryId
+      in: path
+      description: Beneficiary Id to inquire about
+      required: true
+      schema:
+        type: string
+    beneficiaryType:
+      name: beneficiaryType
+      in: query
+      description: Beneficiary Type to inquire about
+      required: false
+      schema:
+        type: string
+        enum:
+          - Local
+          - Internal
+          - International
+          - Cliq
+          - Domestic
+    transactionId:
+      name: transactionId
+      in: path
+      description: Transaction id to retrieve
+      required: true
+      schema:
+        type: string
+    transactionType:
+      name: transactionType
+      in: query
+      description: Filter by Transaction Type
+      required: false
+      schema:
+        type: string
+    instrumentCode:
+      name: instrumentCode
+      in: query
+      description: Filter by Instrument Code to retrieve all transactions made by a specific instrument
+      required: false
+      schema:
+        type: string
+    transactionStatus:
+      name: status
+      in: query
+      description: Filter by transaction status
+      required: false
+      schema:
+        type: string
+    transactionAmountFrom:
+      name: amountFrom
+      in: query
+      description: Filter by transaction amount. Retrieve transactions with amount starting with this value at minimum
+      required: false
+      schema:
+        type: number
+        format: double
+        example: 12.00
+    transactionAmountTo:
+      name: amountTo
+      in: query
+      description: Filter by transaction amount. Retrieve transactions with amount ending at this value at maximum
+      required: false
+      schema:
+        type: number
+        format: double
+        example: 15.00
+    transactionCurrency:
+      name: currency
+      in: query
+      description: Filter by transaction currency
+      required: false
+      schema:
+        type: string
+        format: ISO 4217
+    transactionPresentmentFrom:
+      name: presentmentDateFrom
+      in: query
+      description: Filter by transaction Presentment date. The start date of the filter query, to retrieve all transaction from this date onward
+      required: false
+      schema:
+        type: string
+        example: "2020-01-01"
+    transactionPresentmentTo:
+      name: presentmentDateTo
+      in: query
+      description: Filter by transaction Presentment date. The end date of the filter query, to retrieve all transaction up to this date
+      required: false
+      schema:
+        type: string
+        example: "2020-01-01"
+    transactionSettlementFrom:
+      name: settlementDateFrom
+      in: query
+      description: Filter by transaction Settlement date. The start date of the filter query, to retrieve all transaction from this date onward
+      required: false
+      schema:
+        type: string
+        pattern: '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
+        example: "2020-01-01"
+    transactionSettlementTo:
+      name: settlementDateTo
+      in: query
+      description: Filter by transaction Settlement date. The end date of the filter query, to retrieve all transaction up to this date
+      required: false
+      schema:
+        type: string
+        pattern: '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
+        example: "2020-01-01"
+    transactionDirection:
+      name: transactionDirection
+      in: query
+      description: Filter by transaction Direction; Credit or Debit
+      required: false
+      schema:
+        type: string
+        enum:
+          - credit
+          - debit
+    sospId:
+      name: sospId
+      in: path
+      description: Standing Order & Scheduled Payment id to retrieve
+      required: true
+      schema:
+        type: string

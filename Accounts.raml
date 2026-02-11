@@ -1,0 +1,350 @@
+#%RAML 0.8
+title: Accounts
+version: v0.4.3
+baseUri: "http://jpcjofsdev.apigw-az-eu.webmethods.io/gateway/Accounts/v0.4.3"
+protocols: [HTTP]
+schemas: 
+    - 
+        dateTime: '{"type":"string","format":"date-time(YYYY-MM-DDTHH:mm:ssZ)","example":"2006-09-15T10:30:00.000Z"}'
+        routeComplexType: '{"required":["address","schema"],"type":"object","properties":{"address":{"type":"string","format":"str","example":"JO27CBJO0010000000000000000001"},"schema":{"type":"string","format":"str","example":"IBAN"}}}'
+        balanceComplexType: '{"required":["balanceAmount","balancePosition"],"type":"object","properties":{"balanceAmount":{"type":"number","format":"float(4 decimals)","example":"25.001"},"balancePosition":{"type":"string","description":"indicates the position of the balance, if its either credit or debit","enum":["credit","debit"]}}}'
+        amountComplexType: '{"required":["amount","currency"],"type":"object","properties":{"amount":{"type":"number","format":"float(4 decimals)","example":"25.001"},"currency":{"type":"string","format":"ISO 4217","example":"JOD"}}}'
+        error_notFound: '{"type":"composed","properties":{"code":{"type":"object","example":"resource.notFound"},"desc":{"type":"object","example":"The requested resource could not be found"},"errors":{"type":"array","items":{"type":"object","properties":{"code":{"type":"object","example":"http.url.invalid.endpoint"},"desc":{"type":"object","example":"The requested endpoint is not valid. Please check the url and try again"}}}}},"allOf":[{"type":"object","$ref":"#/definitions/errorBody"},{"type":"object"}]}'
+        error_serviceUnavailable: '{"type":"composed","properties":{"code":{"type":"object","example":"server.service.error"},"desc":{"type":"object","example":"The requested service is currently unavailable"},"errors":{"type":"array","items":{"type":"object","properties":{"code":{"type":"object","example":"server.service.maintenance"},"desc":{"type":"object","example":"The service is temporarily down for maintenance. Please try again later"}}}}},"allOf":[{"type":"object","$ref":"#/definitions/errorBody"},{"type":"object"}]}'
+        debtorComplexType: '{"type":"object","properties":{"debtorAccount":{"type":"object","$ref":"#/definitions/accountBasicInfoComplexType"},"debtorAgent":{"type":"object"},"debtorPersonal":{"type":"object","$ref":"#/definitions/debtorCreditorPersonalComplexType"}}}'
+        creditorComplexType: '{"type":"object","properties":{"creditorAccount":{"type":"object","$ref":"#/definitions/accountBasicInfoComplexType"},"creditorAgent":{"type":"object"},"creditorPersonal":{"type":"object","$ref":"#/definitions/debtorCreditorPersonalComplexType"}}}'
+        errorBody: '{"type":"object","properties":{"code":{"type":"string","description":"High-level error code","example":"path.subPath"},"desc":{"type":"string","description":"Descriptive message of the error","example":"High-level description of the error"},"errors":{"type":"array","description":"List of specific errors. Used to display multiple errors if more than one exist","items":{"type":"object","properties":{"code":{"type":"string","description":"Specific error code","example":"specificPath.specificSubPath"},"desc":{"type":"string","description":"Descriptive message of the specific error","example":"Specific description of this error object"}}}},"id":{"type":"string","description":"Unique identifier for the error response. Used for logging and tracking errors","format":"UUIDv4","example":"2c8579d1-8ccb-49c1-b64d-ed2a5b357c8f"}}}'
+        accountBasicInfoComplexType: '{"required":["accountId","mainRoute"],"type":"object","properties":{"accountId":{"type":"string","format":"str","example":"str123"},"mainRoute":{"type":"object","$ref":"#/definitions/routeComplexType"}}}'
+        dayComplexType: '{"type":"object","properties":{"closingTime":{"type":"string","format":"time(HH:mm)","example":"18:00"},"isWorkingDay":{"type":"boolean","example":"true"},"openingTime":{"type":"string","format":"time(HH:mm)","example":"10:00"},"secondClosingTime":{"type":"string","format":"time(HH:mm)","example":"23:00"},"secondOpeningTime":{"type":"string","format":"time(HH:mm)","example":"19:00"}}}'
+        links: '{"type":"object","properties":{"CAF":{"type":"object","properties":{"account":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}"},"method":{"type":"string","example":"GET"}}},"institution":{"type":"object","properties":{"href":{"type":"string","example":"/institution"},"method":{"type":"string","example":"GET"}}}}},"FI":{"type":"object","properties":{"FXs":{"type":"object","properties":{"href":{"type":"string","example":"/institution/FXs"},"method":{"type":"string","example":"GET"}}},"SSTs":{"type":"object","properties":{"href":{"type":"string","example":"/institution/SSTs"},"method":{"type":"string","example":"GET"}}},"branches":{"type":"object","properties":{"href":{"type":"string","example":"/institution/branches"},"method":{"type":"string","example":"GET"}}},"fees":{"type":"object","properties":{"href":{"type":"string","example":"/institution/fees"},"method":{"type":"string","example":"GET"}}},"offers":{"type":"object","properties":{"href":{"type":"string","example":"/institution/offers"},"method":{"type":"string","example":"GET"}}},"products":{"type":"object","properties":{"href":{"type":"string","example":"/institution/products"},"method":{"type":"string","example":"GET"}}},"self":{"type":"object","properties":{"href":{"type":"string","example":"/institution"},"method":{"type":"string","example":"GET"}}}}},"FXs":{"type":"object","properties":{"institution":{"type":"object","properties":{"href":{"type":"string","example":"/institution"},"method":{"type":"string","example":"GET"}}},"self":{"type":"object","properties":{"href":{"type":"string","example":"/institution/FXs/{targetCurrency}"},"method":{"type":"string","example":"GET"}}}}},"OTP":{"type":"object","properties":{"account":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}"},"method":{"type":"string","example":"GET"}}},"institution":{"type":"object","properties":{"href":{"type":"string","example":"/institution"},"method":{"type":"string","example":"GET"}}}}},"SOSP":{"type":"object","properties":{"account":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}"},"method":{"type":"string","example":"GET"}}},"beneficiary":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}/beneficiaries/{beneficiaryId}"},"method":{"type":"string","example":"GET"}}},"institution":{"type":"object","properties":{"href":{"type":"string","example":"/institution"},"method":{"type":"string","example":"GET"}}},"self":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}/SOSPs/{SOSPId}"},"method":{"type":"string","example":"GET"}}}}},"SSTs":{"type":"object","properties":{"institution":{"type":"object","properties":{"href":{"type":"string","example":"/institution"},"method":{"type":"string","example":"GET"}}},"self":{"type":"object","properties":{"href":{"type":"string","example":"/institution/SSTs/{sstId}"},"method":{"type":"string","example":"GET"}}}}},"accounts":{"type":"object","properties":{"CAF":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}/CAF"},"method":{"type":"string","example":"POST"}}},"SOSPs":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}/SOSPs"},"method":{"type":"string","example":"GET"}}},"balances":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}/balances"},"method":{"type":"string","example":"GET"}}},"beneficiaries":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}/beneficiaries"},"method":{"type":"string","example":"GET"}}},"branch":{"type":"object","properties":{"href":{"type":"string","example":"institution/branches/{branchId}"},"method":{"type":"string","example":"POST"}}},"institution":{"type":"object","properties":{"href":{"type":"string","example":"/institution"},"method":{"type":"string","example":"GET"}}},"offers":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}/offers"},"method":{"type":"string","example":"GET"}}},"self":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}"},"method":{"type":"string","example":"GET"}}},"transactions":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}/transactions"},"method":{"type":"string","example":"GET"}}}}},"balances":{"type":"object","properties":{"account":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}"},"method":{"type":"string","example":"GET"}}},"institution":{"type":"object","properties":{"href":{"type":"string","example":"/institution"},"method":{"type":"string","example":"GET"}}},"self":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}/balances"},"method":{"type":"string","example":"GET"}}}}},"beneficiaries":{"type":"object","properties":{"account":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}"},"method":{"type":"string","example":"GET"}}},"institution":{"type":"object","properties":{"href":{"type":"string","example":"/institution"},"method":{"type":"string","example":"GET"}}},"self":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}/beneficiaries/{beneficiaryId}"},"method":{"type":"string","example":"GET"}}}}},"branches":{"type":"object","properties":{"institution":{"type":"object","properties":{"href":{"type":"string","example":"/institution"},"method":{"type":"string","example":"GET"}}},"self":{"type":"object","properties":{"href":{"type":"string","example":"/institution/branches/{branchId}"},"method":{"type":"string","example":"GET"}}}}},"offers":{"type":"object","properties":{"account":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}"},"method":{"type":"string","example":"GET"}}},"institution":{"type":"object","properties":{"href":{"type":"string","example":"/institution"},"method":{"type":"string","example":"GET"}}},"product":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}/products/{productId}"},"method":{"type":"string","example":"GET"}}},"self":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}/offers/{offerId}"},"method":{"type":"string","example":"GET"}}}}},"offersPublic":{"type":"object","properties":{"institution":{"type":"object","properties":{"href":{"type":"string","example":"/institution"},"method":{"type":"string","example":"GET"}}},"product":{"type":"object","properties":{"href":{"type":"string","example":"/institution/products/{productId}"},"method":{"type":"string","example":"GET"}}},"self":{"type":"object","properties":{"href":{"type":"string","example":"/institution/offers/{offerId}"},"method":{"type":"string","example":"GET"}}}}},"pagination":{"type":"object","properties":{"last":{"type":"object","properties":{"href":{"type":"string","example":"/{route}/{resource}?skip={X}&limit={Y}"},"method":{"type":"string","example":"GET"}},"description":"links to the last page of resource"},"next":{"type":"object","properties":{"href":{"type":"string","example":"/{route}/{resource}?skip={X}&limit={Y}"},"method":{"type":"string","example":"GET"}},"description":"links to the next page of resource"},"prev":{"type":"object","properties":{"href":{"type":"string","example":"/{route}/{resource}?skip={X}&limit={Y}"},"method":{"type":"string","example":"GET"}},"description":"links to the previous page of resource"}}},"transactions":{"type":"object","properties":{"FXs":{"type":"object","properties":{"href":{"type":"string","example":"/institution/FXs/{currency}"},"method":{"type":"string","example":"GET"}}},"account":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}"},"method":{"type":"string","example":"GET"}}},"institution":{"type":"object","properties":{"href":{"type":"string","example":"/institution"},"method":{"type":"string","example":"GET"}}},"self":{"type":"object","properties":{"href":{"type":"string","example":"/accounts/{accountId}/transactions/{transactionId}"},"method":{"type":"string","example":"GET"}}}}}}}'
+        countryInfo: '{"type":"object","properties":{"countryCode":{"type":"string","format":"ISO 3166-1 alpha-2","example":"JO"},"countryName":{"type":"string","example":"Jordan"}}}'
+        email: '{"type":"string","example":"+1 987-654-3210"}'
+        error_notAcceptable: '{"type":"composed","properties":{"code":{"type":"object","example":"http.headers.invalid"},"desc":{"type":"object","example":"The requested content cannot be served in the specified format"},"errors":{"type":"array","items":{"type":"object","properties":{"code":{"type":"object","example":"http.content.unsupportedFormat"},"desc":{"type":"object","example":"The requested format is not supported. Please specify a different format"}}}}},"allOf":[{"type":"object","$ref":"#/definitions/errorBody"},{"type":"object"}]}'
+        error_tooManyRequests: |-
+                {"required":["code","desc","id"],"type":"composed","properties":{"code":{"type":"object","example":"rateLimit.exceeded"},"desc":{"type":"object","example":"The rate limit for requests has been exceeded"},"errors":{"type":"array","items":{"type":"object","properties":{"code":{"type":"object","example":"rateLimit.exceeded"},"desc":{"type":"object","example":"The maximum number of requests '500/min' has been reached. Try again in '53 seconds'"}}}}},"allOf":[{"type":"object","$ref":"#/definitions/errorBody"},{"type":"object"}]}
+        feesComplexType: |-
+                {"type":"object","properties":{"additionalInformation":{"type":"object","format":"string","example":"[\"string\"]"},"applicableForInstitutions":{"type":"array","items":{"type":"composed","properties":{"address":{"type":"object","example":"JORDJOA0"},"schema":{"type":"object","example":"bicCode"}},"allOf":[{"type":"object","$ref":"#/definitions/routeComplexType"},{"type":"object"}]}},"feeCategory":{"type":"string","description":"describes the fee if it's the 'default' fee which applies to all institutions, or if it's a 'special' fee that applies only to specific institutions","example":"default","enum":["default","special"]},"feeId":{"type":"string","example":"str123"},"fees":{"type":"array","items":{"type":"object","properties":{"feeAmount":{"type":"object","$ref":"#/definitions/amountComplexType"},"feeType":{"type":"string","description":"type of fee, such as surcharges, comissions, stamps.. etc","example":"surcharges"}}}},"lastModificationDateTime":{"type":"object","$ref":"#/definitions/dateTime"},"service":{"type":"string","description":"the specific service for which the fee applies. A \".\" is used to split the sub-services","example":"ATM.cashWithdrawal.foreignCurrency.elite"},"serviceChannel":{"type":"string","description":"the channel through which the service is provided","example":"automatedTeller"}}}
+        routingsComplexType: '{"type":"array","items":{"type":"composed","properties":{"address":{"type":"object","example":"HSM"},"schema":{"type":"object","example":"CLIQ"}},"allOf":[{"type":"object","$ref":"#/definitions/routeComplexType"},{"type":"object"}]}}'
+        error_internalServerError: '{"type":"composed","properties":{"code":{"type":"object","example":"server.error"},"desc":{"type":"object","example":"An internal server error occurred"},"errors":{"type":"array","items":{"type":"object","properties":{"code":{"type":"object","example":"server.error.database"},"desc":{"type":"object","example":"Error accessing the database. Please contact the development support team or try again later"}}}}},"allOf":[{"type":"object","$ref":"#/definitions/errorBody"},{"type":"object"}]}'
+        defaultFeeSurcharges: '{"type":"object","properties":{"defaultBalanceInquiryFee":{"type":"object","$ref":"#/definitions/amountComplexType"},"defaultCashWithdrawalInternationalFee":{"type":"object","$ref":"#/definitions/amountComplexType"},"defaultCashWithdrawalNationalFee":{"type":"object","$ref":"#/definitions/amountComplexType"}}}'
+        website: '{"type":"string","format":"URL Living Standard","example":"www.jopacc.com"}'
+        addressComplexType: '{"type":"object","properties":{"addresslines":{"type":"object","$ref":"#/definitions/addresslines"},"city":{"type":"string","example":"Amman"},"countryInfo":{"type":"object","$ref":"#/definitions/countryInfo"},"location":{"type":"object","$ref":"#/definitions/location"},"moreInfo":{"type":"string","example":"textarea"},"phoneNumber":{"type":"object","$ref":"#/definitions/phoneNumber"},"postcode":{"type":"string","example":"11962"},"state":{"type":"string","example":"Capital"},"website":{"type":"object","$ref":"#/definitions/website"}}}'
+        feeSurchargeComplexType: '{"type":"array","format":"object","items":{"type":"object","$ref":"#/definitions/feeSurcharge"}}'
+        error_forbidden: '{"type":"composed","properties":{"code":{"type":"object","example":"http.auth.forbidden"},"desc":{"type":"object","example":"Insufficient privileges. Access to the requested resource is forbidden"},"errors":{"type":"array","items":{"type":"object","properties":{"code":{"type":"object","example":"http.auth.role.insufficient"},"desc":{"type":"object","example":"You do not have the necessary permissions to access this resource"}}}}},"allOf":[{"type":"object","$ref":"#/definitions/errorBody"},{"type":"object"}]}'
+        accountOwnerComplexType: '{"type":"object","properties":{"accountHolderType":{"type":"object","$ref":"#/definitions/account/properties/accountHolderType"},"address":{"type":"object","properties":{"addresslines":{"type":"object","$ref":"#/definitions/addresslines"},"countryInfo":{"type":"object","$ref":"#/definitions/countryInfo"}}},"name":{"type":"object","$ref":"#/definitions/name"}}}'
+        debtorCreditorPersonalComplexType: '{"type":"object","properties":{"identification":{"type":"string","description":"Identification of the debtor/creditor as seen on the transaction","example":"str123"},"name":{"type":"string","description":"Name of the debtor/creditor as seen on the transaction","example":"Mohammed Lee"},"postalAddress":{"type":"array","description":"Address of the debtor/creditor as seen on the transaction","items":{"type":"string","example":"Arar Street, Amman, Jordan"}}}}'
+        feeSurcharge: '{"type":"object","properties":{"feeAmount":{"type":"object","$ref":"#/definitions/amountComplexType"},"feeSurchargeType":{"type":"string","example":"cashWithdrawalNationalFee"},"institutionCode":{"type":"composed","properties":{"address":{"type":"object","example":"JORDJOA0"},"schema":{"type":"object","example":"bicCode"}},"allOf":[{"type":"object","$ref":"#/definitions/routeComplexType"},{"type":"object"}]}}}'
+        institutionBasicInfoComplexType: '{"required":["institutionIdentification","institutionType","name"],"type":"object","properties":{"institutionIdentification":{"type":"composed","properties":{"address":{"type":"object","example":"JORDJOA0"},"schema":{"type":"object","example":"bicCode"}},"allOf":[{"type":"object","$ref":"#/definitions/routeComplexType"},{"type":"object"}]},"institutionPhoneNumber":{"type":"object","$ref":"#/definitions/phoneNumber"},"institutionType":{"type":"string","format":"str","example":"BANK"},"name":{"type":"object","$ref":"#/definitions/nameComplexType"}}}'
+        accessibilityFeatures: |-
+                {"type":"object","format":"string","example":"[\"wheelchair\",\"brailleSupported\"]"}
+        phoneNumber: '{"type":"string","format":"E.164","example":"+962761231234"}'
+        workingHoursComplexType: '{"type":"object","properties":{"friday":{"type":"object","$ref":"#/definitions/dayComplexType"},"monday":{"type":"object","$ref":"#/definitions/dayComplexType"},"saturday":{"type":"object","$ref":"#/definitions/dayComplexType"},"sunday":{"type":"object","$ref":"#/definitions/dayComplexType"},"thursday":{"type":"object","$ref":"#/definitions/dayComplexType"},"tuesday":{"type":"object","$ref":"#/definitions/dayComplexType"},"wednesday":{"type":"object","$ref":"#/definitions/dayComplexType"}}}'
+        error_badRequest: '{"required":["code","desc","id"],"type":"composed","properties":{"code":{"type":"object","example":"http.request.invalid"},"desc":{"type":"object","example":"Invalid request parameters"},"errors":{"type":"array","items":{"type":"object","properties":{"code":{"type":"object","example":"http.headers.invalid"},"desc":{"type":"object","example":"Required header x-interactions-id is missing"}}}}},"allOf":[{"type":"object","$ref":"#/definitions/errorBody"},{"type":"object"}]}'
+        nameComplexType: '{"type":"composed","properties":{"tradeName":{"type":"object","$ref":"#/definitions/name"}},"allOf":[{"type":"object","$ref":"#/definitions/name"},{"type":"object"}]}'
+        addresslines: |-
+                {"type":"object","format":"string","example":"[\"Amman, Jordan\",\"Wadi Saqra\",\"Arar Street\"]"}
+        name: '{"required":["enName"],"type":"object","properties":{"arName":{"type":"string","format":"str"},"enName":{"type":"string","format":"str"}}}'
+        location: '{"type":"object","properties":{"latitude":{"type":"number","format":"float","example":"31.9504003"},"longitude":{"type":"number","format":"float","example":"35.8648691"}}}'
+        error_unauthorized: |-
+                {"required":["code","desc","id"],"type":"composed","properties":{"code":{"type":"object","example":"http.auth.invalid"},"desc":{"type":"object","example":"Invalid authentication credentials"},"errors":{"type":"array","items":{"type":"object","properties":{"code":{"type":"object","example":"http.auth.header.missing"},"desc":{"type":"object","example":"Authentication header is missing. Please include the 'Authorization' header in your request."}}}}},"allOf":[{"type":"object","$ref":"#/definitions/errorBody"},{"type":"object"}]}
+        branchBasicInfoComplexType: '{"required":["branchIdentification","name"],"type":"object","properties":{"branchIdentification":{"type":"composed","properties":{"address":{"type":"object","example":"10"},"schema":{"type":"object","example":"branchCode"}},"allOf":[{"type":"object","$ref":"#/definitions/routeComplexType"},{"type":"object"}]},"contact":{"type":"object","$ref":"#/definitions/contactComplexType"},"name":{"type":"object","$ref":"#/definitions/nameComplexType"}}}'
+        contactComplexType: '{"type":"object","properties":{"email":{"type":"object","$ref":"#/definitions/email"},"phoneNumber":{"type":"object","$ref":"#/definitions/phoneNumber"}}}'
+        error_methodNotAllowed: '{"type":"composed","properties":{"code":{"type":"object","example":"http.method.invalid"},"desc":{"type":"object","example":"The requested HTTP method is not allowed for this resource"},"errors":{"type":"array","items":{"type":"object","properties":{"code":{"type":"object","example":"http.method.invalid.patch"},"desc":{"type":"object","example":"PATCH method is not supported for this resource"}}}}},"allOf":[{"type":"object","$ref":"#/definitions/errorBody"},{"type":"object"}]}'
+        account: |-
+                {"required":["accountCurrency","accountId","accountStatus","accountType","branchBasicInfo","institutionBasicInfo","mainRoute","openingDate","sharedAccount"],"type":"object","properties":{"_links":{"type":"object","$ref":"#/definitions/links/properties/accounts"},"accountCurrency":{"type":"string","format":"ISO 4217","example":"JOD"},"accountHolderType":{"type":"string","format":"str","example":"individual"},"accountId":{"type":"string","format":"str","example":"str123"},"accountStatus":{"type":"string","format":"str","example":"active"},"accountType":{"type":"object","properties":{"code":{"type":"string","description":"account type code. defined as {main type}.{sub type}.{sub type}.. etc where types are seperated by a \".\"","format":"str","example":"CHK.BUS"},"name":{"type":"string","format":"str","example":"Business Checking Account"}}},"availableBalance":{"type":"object","$ref":"#/definitions/balanceComplexType"},"branchBasicInfo":{"type":"object","$ref":"#/definitions/branchBasicInfoComplexType"},"custodian":{"type":"object","properties":{"accountBasicInfo":{"type":"object","$ref":"#/definitions/accountBasicInfoComplexType"},"relationshipType":{"type":"string","format":"str","example":"FATHER"}}},"institutionBasicInfo":{"type":"object","$ref":"#/definitions/institutionBasicInfoComplexType"},"lastModificationDateTime":{"type":"object","$ref":"#/definitions/dateTime"},"lockedForCredit":{"type":"boolean","example":"true"},"lockedForDebit":{"type":"boolean","example":"true"},"mainRoute":{"type":"object","$ref":"#/definitions/routeComplexType"},"openingDate":{"type":"object","$ref":"#/definitions/dateTime"},"productId":{"type":"string","format":"str","example":"productId"},"routings":{"type":"object","$ref":"#/definitions/routingsComplexType"},"sharedAccount":{"type":"boolean","example":"false"}}}
+        error_unsupportedMediaType: |-
+                {"type":"composed","properties":{"code":{"type":"object","example":"media.unsupportedEncoding"},"desc":{"type":"object","example":"The requested media encoding is not supported"},"errors":{"type":"array","items":{"type":"object","properties":{"code":{"type":"object","example":"media.unsupportedEncoding.appXml"},"desc":{"type":"object","example":"The requested format 'application/xml' is not supported"}}}}},"allOf":[{"type":"object","$ref":"#/definitions/errorBody"},{"type":"object"}]}
+        currencies: |-
+                {"type":"object","format":"string","example":"[\"JOD\",\"USD\"]"}
+/accounts: 
+    displayName: /accounts
+    get: 
+        description: retrieve list of accounts with information
+        headers: 
+            Authorization: 
+                description: Authorization header in which the token is placed
+                type: string
+                required: true
+                repeat: false
+            x-jws-signature: 
+                description: JWS Signature, refer to security reference
+                type: string
+                required: true
+                repeat: false
+            x-customer-id: 
+                description: Unique id for the User
+                type: string
+                required: false
+                repeat: false
+            x-customer-user-agent: 
+                description: Indicates the user-agent the User is using. Helps protecting from comprimised devices
+                type: string
+                required: false
+                repeat: false
+            x-financial-id: 
+                description: Unique id for the Financial Institution; BIC or Pseudo-BIC code of the sender
+                type: string
+                required: false
+                repeat: false
+            x-customer-ip-address: 
+                description: The User's IP address if the user is currently logged in with the TPP
+                type: string
+                required: false
+                repeat: false
+            x-auth-date: 
+                description: Date and time of the last authentication of the User by the TPP
+                type: string
+                required: false
+                repeat: false
+            x-interactions-id: 
+                description: Unique id for the interaction, used in all request and responses that are related
+                type: string
+                required: true
+                repeat: false
+            x-idempotency-key: 
+                description: Unique id that is generated for each request and response. Used for tracking and to check for duplicate calls
+                type: string
+                required: true
+                repeat: false
+        queryParameters: 
+            accountStatus: 
+                description: filter by status of account
+                type: string
+                required: false
+                repeat: false
+            accountType: 
+                description: filter by type of account. Defined as {main type}.{sub type}.{sub type}.. etc where types are seperated by a "."
+                type: string
+                required: false
+                repeat: false
+            limit: 
+                description: The maximum number of resources to return in the response. Used for pagination
+                type: integer
+                required: false
+                repeat: false
+                minimum: 1
+                maximum: 1E+2
+                default: 10
+            skip: 
+                description: The number of resources to skip showing in this response. Used for pagination
+                type: integer
+                required: false
+                repeat: false
+                default: 0
+            sort: 
+                description: Sorting the response by creation date of the resources (ascending or descending)
+                type: string
+                required: false
+                repeat: false
+                enum: [asc, desc]
+                default: desc
+        responses: 
+            "200": 
+                description: successful
+                body: 
+                    application/json: 
+                        schema: '{"type":"object","properties":{"_links":{"type":"object","$ref":"#/definitions/links/properties/pagination"},"data":{"type":"array","items":{"type":"object","$ref":"#/definitions/account"}}}}'
+            "400": 
+                description: "400 Bad Request"
+                body: 
+                    application/json: 
+                        schema: error_badRequest
+            "401": 
+                description: "401 Unauthorized"
+                body: 
+                    application/json: 
+                        schema: error_unauthorized
+            "500": 
+                description: "500 Internal Service Error"
+                body: 
+                    application/json: 
+                        schema: error_internalServerError
+            "403": 
+                description: "403 Forbidden"
+                body: 
+                    application/json: 
+                        schema: error_forbidden
+            "404": 
+                description: "404 Not Found"
+                body: 
+                    application/json: 
+                        schema: error_notFound
+            "415": 
+                description: "415 Unsupported Media Type"
+                body: 
+                    application/json: 
+                        schema: error_unsupportedMediaType
+            "503": 
+                description: "503 Service Unavailable"
+                body: 
+                    application/json: 
+                        schema: error_serviceUnavailable
+            "405": 
+                description: "405 Method Not Allowed"
+                body: 
+                    application/json: 
+                        schema: error_methodNotAllowed
+            "406": 
+                description: "406 Not Acceptable"
+                body: 
+                    application/json: 
+                        schema: error_notAcceptable
+            "429": 
+                description: "429 Too Many Requests"
+                body: 
+                    application/json: 
+                        schema: error_tooManyRequests
+    /{accountAddress}: 
+        displayName: /accounts/{accountAddress}
+        get: 
+            description: retrieve account information by accountAddress. The type of value in {accountAddress} is defined by accountSchema
+            headers: 
+                Authorization: 
+                    description: Authorization header in which the token is placed
+                    type: string
+                    required: true
+                    repeat: false
+                x-jws-signature: 
+                    description: JWS Signature, refer to security reference
+                    type: string
+                    required: true
+                    repeat: false
+                x-customer-id: 
+                    description: Unique id for the User
+                    type: string
+                    required: false
+                    repeat: false
+                x-customer-user-agent: 
+                    description: Indicates the user-agent the User is using. Helps protecting from comprimised devices
+                    type: string
+                    required: false
+                    repeat: false
+                x-financial-id: 
+                    description: Unique id for the Financial Institution; BIC or Pseudo-BIC code of the sender
+                    type: string
+                    required: false
+                    repeat: false
+                x-customer-ip-address: 
+                    description: The User's IP address if the user is currently logged in with the TPP
+                    type: string
+                    required: false
+                    repeat: false
+                x-auth-date: 
+                    description: Date and time of the last authentication of the User by the TPP
+                    type: string
+                    required: false
+                    repeat: false
+                x-interactions-id: 
+                    description: Unique id for the interaction, used in all request and responses that are related
+                    type: string
+                    required: true
+                    repeat: false
+                x-idempotency-key: 
+                    description: Unique id that is generated for each request and response. Used for tracking and to check for duplicate calls
+                    type: string
+                    required: true
+                    repeat: false
+                accountSchema: 
+                    description: Schema of the account address of the user. Defined as 'accountId' if using accountId, or 'IBAN' in case of using Iban ..etc
+                    type: string
+                    required: true
+                    repeat: false
+                    default: accountId
+            responses: 
+                "200": 
+                    description: successful
+                    body: 
+                        application/json: 
+                            schema: account
+                "400": 
+                    description: "400 Bad Request"
+                    body: 
+                        application/json: 
+                            schema: error_badRequest
+                "401": 
+                    description: "401 Unauthorized"
+                    body: 
+                        application/json: 
+                            schema: error_unauthorized
+                "500": 
+                    description: "500 Internal Service Error"
+                    body: 
+                        application/json: 
+                            schema: error_internalServerError
+                "403": 
+                    description: "403 Forbidden"
+                    body: 
+                        application/json: 
+                            schema: error_forbidden
+                "404": 
+                    description: "404 Not Found"
+                    body: 
+                        application/json: 
+                            schema: error_notFound
+                "415": 
+                    description: "415 Unsupported Media Type"
+                    body: 
+                        application/json: 
+                            schema: error_unsupportedMediaType
+                "503": 
+                    description: "503 Service Unavailable"
+                    body: 
+                        application/json: 
+                            schema: error_serviceUnavailable
+                "405": 
+                    description: "405 Method Not Allowed"
+                    body: 
+                        application/json: 
+                            schema: error_methodNotAllowed
+                "406": 
+                    description: "406 Not Acceptable"
+                    body: 
+                        application/json: 
+                            schema: error_notAcceptable
+                "429": 
+                    description: "429 Too Many Requests"
+                    body: 
+                        application/json: 
+                            schema: error_tooManyRequests
+            baseUriParameters: 
+                accountAddress: 
+                    description: Account Address of the user
+                    type: string
+                    required: true
+                    repeat: false
+documentation: 
+    - 
+        title: API Description
+        content: |
+            ![JOF1](https://www.jopacc.com/sites/default/files/2023-12/jpc-internal-jof-banner.png)
+            
+            
+            ## This is the initial draft of the Jordan Open Finance specification
+            
+            ##### The services in this Open API specification are Direct-Call Services (DCS). These services can be accessed by direct calls to the banks or by using an aggregator central hub such as JoPACC. However, the URLs and routes for these services are designed for direct-calls only.
+            
+            For the Open API specification of the aggregated services, refer to the Aggregator Services specification.
+            
+            ![services](https://www.jopacc.com/sites/default/files/2023-12/jpc-internal-jof-services.jpg)
+            
+            #### Services in Jordan Open Finance Specification (JOF) are divided into 4 categories based on their content and nature of consent:
+            ### Account Information Services (AIS)
+            This category covers services that are related to customers' financial accounts. This category has two sub-categories:
+              1. **MY AIS**:
+                Services that allow an account holder to view their own information. For a TPP to retrieve this information, they require the consent of the user.
+              2. **Others AIS**:
+                Services that enable a TPP to view the account information of a user who is not their customer and who hasn't initiated the request. These services require the user whose information is being retrieved to have consented, such as the IBAN Confirmation service.
+            ### Payment Initiation Services (PIS)
+            This category involves services that allow TPPs to initiate payments on behalf of the user. The user's consent is required by the TPP.
+            ### Extended Services (ES)
+            This category involves services that require the consent of an account-holder but does not relate directly to their account-information. The services under this category extend the functionalities of their account, such as the OTP service.
+            ### Facilities and Products Services (FPS)
+            This category includes services that specifically provide data about the Financial Institution's facilities and products. It does not contain any information about the customers or require their consent.
+            
+            #### The Central Bank of Jordan has classified Open Finance  consents into Account Information consent and Payment Initiation consent. The above categories are based on the CBJ's classifications and divide them further for the user's convenience.
+            
+            Some useful links:
+            - [About JoPACC](https://jopacc.com)
+                              
+            ![JOF2](https://www.jopacc.com/sites/default/files/2023-12/jpc-internal-jof-bottom.png)
+              
