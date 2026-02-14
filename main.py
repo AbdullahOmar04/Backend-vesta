@@ -93,6 +93,11 @@ def sync_accounts(uid: str, customer_id: str):
             if data.get("linked") != True:  # only delete non-linked cache
                 doc.reference.delete()
 
+        # Get already-linked account IDs so we don't overwrite their linked status
+        linked_ids = set()
+        for doc in accounts_ref.where("linked", "==", True).stream():
+            linked_ids.add(doc.id)
+
         batch = db.batch()
         out = []
 
@@ -123,7 +128,6 @@ def sync_accounts(uid: str, customer_id: str):
             trimmed = {
                 "accountId": account_id,
                 "provider": "JoPACC",
-                "linked": False,  # <-- IMPORTANT
 
                 "bankName": bank_name,
                 "accountTypeCode": account_type_code,
@@ -137,6 +141,10 @@ def sync_accounts(uid: str, customer_id: str):
                 "lockedForDebit": bool(acc.get("lockedForDebit", False)),
                 "lockedForCredit": bool(acc.get("lockedForCredit", False)),
             }
+
+            # Only set linked=False for NEW accounts; preserve existing linked status
+            if account_id not in linked_ids:
+                trimmed["linked"] = False
 
             # Add SERVER_TIMESTAMP only for Firestore (not serializable to JSON)
             firestore_data = {**trimmed, "syncedAt": firestore.SERVER_TIMESTAMP}
@@ -758,11 +766,15 @@ def _ahli_sync_accounts_internal(uid: str) -> dict:
     user_ref = db.collection("users").document(uid)
     accounts_ref = user_ref.collection("accounts")
 
-    # Delete only Ahli(finX) accounts (don’t wipe other banks)
+    # Get already-linked Ahli account IDs so we don't overwrite their linked status
+    linked_ids = set()
     for doc in accounts_ref.stream():
         d = doc.to_dict() or {}
         if d.get("provider") == AHLI_PROVIDER_LABEL and d.get("sandbox") == AHLI_SANDBOX:
-            doc.reference.delete()
+            if d.get("linked") == True:
+                linked_ids.add(doc.id)
+            else:
+                doc.reference.delete()
 
     batch = db.batch()
     total_balance = 0.0
@@ -790,9 +802,12 @@ def _ahli_sync_accounts_internal(uid: str) -> dict:
             **acc,
             "provider": AHLI_PROVIDER_LABEL,
             "sandbox": AHLI_SANDBOX,
-            "linked": False,  # your UI sets linked=true on selected accounts
             "syncedAt": firestore.SERVER_TIMESTAMP,
         }
+
+        # Only set linked=False for NEW accounts; preserve existing linked status
+        if account_id not in linked_ids:
+            acc_doc["linked"] = False
 
         batch.set(accounts_ref.document(account_id), acc_doc, merge=True)
 
