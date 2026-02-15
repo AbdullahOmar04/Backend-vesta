@@ -385,10 +385,8 @@ def _tpp_client_credentials_token() -> dict:
     return r.json()
 
 def _openid_config(tpp_access_token: str | None = None) -> dict:
-    # Use FINX OpenID config endpoint you already have in Postman:
-    # /api/public/jo/v0.4/.well-known/openid-configuration
     r = requests.get(
-        f"{COMPLY_API_BASE}/.well-known/openid-configuration",
+        FINX_OPENID_CONFIG_URL,
         headers={
             "Authorization": f"Bearer {tpp_access_token}" if tpp_access_token else "",
             "x-ftg-institution-application-code": FINX_INSTITUTION_APP_CODE,
@@ -967,9 +965,6 @@ def ahli_get_transactions(uid: str, account_id: str):
 
     return {"status": "success", "transactions_synced": count}
 
-@app.get("/debug/ahli_env")
-def debug_ahli_env():
-    return {"AHLI_REDIRECT_URI": AHLI_REDIRECT_URI}
 
 """
 #####################################################CAPITAL BANK (CBOJ) ##########################################################
