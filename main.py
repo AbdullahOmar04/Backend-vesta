@@ -1026,6 +1026,8 @@ def _cboj_create_consent(tpp_access_token: str, permissions: list[str],
     payload = {
         "transactionFromDateTime": _iso(tx_from),
         "transactionToDateTime": _iso(tx_to),
+        "transactionFromDate": _iso(tx_from),
+        "transactionToDate": _iso(tx_to),
         "permissions": permissions,
     }
     r = requests.post(url, headers=headers, json=payload, timeout=25)
