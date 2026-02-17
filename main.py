@@ -1035,23 +1035,30 @@ def _cboj_create_consent(tpp_access_token: str, permissions: list[str],
     return r.json()
 
 
-def _cboj_build_auth_url(*, consent_ref: str, state: str, code_challenge: str) -> str:
+def _cboj_build_auth_url(*, consent_ref: str, state: str,
+                         login_url: str | None = None) -> str:
     """
     Build authorize URL for Capital Bank's direct sandbox.
-    Uses standard OAuth2 authorize — no JWT request param needed.
+    Per the CBOJ spec, the consent response includes loginUrls with format:
+      https://{hostname}/ob/web/login?consentRef={consentRef}
+    We append redirect_uri and state for the callback.
     """
     _cboj_require_env()
 
+    if login_url:
+        # Use the loginUrl from the consent response, append our params
+        separator = "&" if "?" in login_url else "?"
+        extra = urlencode({
+            "redirect_uri": CBOJ_REDIRECT_URI,
+            "state": state,
+        })
+        return f"{login_url}{separator}{extra}"
+
+    # Fallback: build manually
     params = {
-        "client_id": CBOJ_CLIENT_ID,
-        "response_type": "code",
-        "redirect_uri": CBOJ_REDIRECT_URI,
-        "scope": "openid accounts",
-        "state": state,
-        "nonce": uuid.uuid4().hex,
         "consentRef": consent_ref,
-        "code_challenge": code_challenge,
-        "code_challenge_method": "S256",
+        "redirect_uri": CBOJ_REDIRECT_URI,
+        "state": state,
     }
     return f"{CBOJ_AUTHORIZE_URL}?{urlencode(params)}"
 
@@ -1200,8 +1207,12 @@ def capital_start_link(uid: str):
     if not consent_ref:
         raise HTTPException(status_code=500, detail=f"Consent response missing consentRef: {consent}")
 
+    # Extract loginUrl from consent response (CBOJ spec includes loginUrls[])
+    login_urls = consent.get("loginUrls") or []
+    login_url = login_urls[0] if login_urls else None
+
     state = uuid.uuid4().hex
-    code_verifier, code_challenge = _pkce_pair()
+    code_verifier, _ = _pkce_pair()
 
     _cboj_write_provider_state(uid, {
         "provider": CBOJ_PROVIDER_LABEL,
@@ -1225,7 +1236,7 @@ def capital_start_link(uid: str):
     auth_url = _cboj_build_auth_url(
         consent_ref=consent_ref,
         state=state,
-        code_challenge=code_challenge,
+        login_url=login_url,
     )
 
     return {"status": "ok", "consentRef": consent_ref, "authUrl": auth_url}
