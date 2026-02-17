@@ -1045,22 +1045,22 @@ def _cboj_build_auth_url(*, consent_ref: str, state: str,
     """
     _cboj_require_env()
 
-    if login_url:
-        # Use the loginUrl from the consent response, append our params
-        separator = "&" if "?" in login_url else "?"
-        extra = urlencode({
-            "redirect_uri": CBOJ_REDIRECT_URI,
-            "state": state,
-        })
-        return f"{login_url}{separator}{extra}"
-
-    # Fallback: build manually
-    params = {
-        "consentRef": consent_ref,
+    extra = {
+        "client_id": CBOJ_CLIENT_ID,
+        "response_type": "code",
+        "scope": "accounts",
         "redirect_uri": CBOJ_REDIRECT_URI,
         "state": state,
     }
-    return f"{CBOJ_AUTHORIZE_URL}?{urlencode(params)}"
+
+    if login_url:
+        # Use the loginUrl from the consent response (includes consentRef)
+        separator = "&" if "?" in login_url else "?"
+        return f"{login_url}{separator}{urlencode(extra)}"
+
+    # Fallback: build manually
+    extra["consentRef"] = consent_ref
+    return f"{CBOJ_AUTHORIZE_URL}?{urlencode(extra)}"
 
 
 def _cboj_exchange_code(*, code: str, code_verifier: str) -> dict:
