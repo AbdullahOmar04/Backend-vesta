@@ -1158,11 +1158,11 @@ def _cboj_ensure_psu_token(uid: str) -> str:
 
 @app.get("/banks/capital/start_link/{uid}")
 def capital_start_link(uid: str):
-    
-    #1) Get TPP token (client_credentials)
-    #2) Create consent with CBOJ-spec permissions
-    #3) Build auth URL for user to open in WebView/browser
-    
+    """
+    1) Get TPP token (client_credentials)
+    2) Create consent with CBOJ-spec permissions
+    3) Build auth URL for user to open in WebView/browser
+    """
     _cboj_require_env()
 
     # PascalCase permissions per CBOJ YAML spec
@@ -1176,13 +1176,23 @@ def capital_start_link(uid: str):
     tx_from = datetime(2000, 1, 1, tzinfo=timezone.utc)
     tx_to = datetime(2052, 12, 2, tzinfo=timezone.utc)
 
-    tpp = _cboj_tpp_token()
+    try:
+        tpp = _cboj_tpp_token()
+    except requests.exceptions.ConnectionError as e:
+        raise HTTPException(status_code=502, detail=f"Cannot reach Capital Bank sandbox ({CBOJ_TOKEN_URL}): {e}")
+    except requests.exceptions.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Capital Bank token error: {e.response.status_code} {e.response.text[:500]}")
+
     tpp_access = tpp.get("access_token", "")
     if not tpp_access:
-        raise HTTPException(status_code=500, detail="Failed to get CBOJ TPP access_token")
+        raise HTTPException(status_code=500, detail=f"Failed to get CBOJ TPP access_token. Response: {tpp}")
 
-    consent = _cboj_create_consent(tpp_access, permissions=permissions,
-                                   tx_from=tx_from, tx_to=tx_to)
+    try:
+        consent = _cboj_create_consent(tpp_access, permissions=permissions,
+                                       tx_from=tx_from, tx_to=tx_to)
+    except requests.exceptions.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Consent creation failed: {e.response.status_code} {e.response.text[:500]}")
+
     # CBOJ uses consentRef (not consentId)
     consent_ref = consent.get("consentRef") or consent.get("consentId")
     if not consent_ref:
