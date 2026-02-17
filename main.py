@@ -350,6 +350,8 @@ FINX_OPENID_CONFIG_URL = os.getenv(
 # Comply API base (the “/api/public/jo/v0.4/...” calls in your screenshots)
 COMPLY_API_BASE = os.getenv("COMPLY_API_BASE", f"{COMPLY_HOST}/api/public/jo/v0.4").rstrip("/")
 
+AHLI_AUTHORIZE_URL = os.getenv("AHLI_AUTHORIZE_URL", f"{COMPLY_HOST}/sandbox/{FINX_INSTITUTION_APP_CODE}/authorize")
+
 AHLI_PROVIDER_KEY = "ahli"
 AHLI_PROVIDER_LABEL = "Ahli"
 AHLI_SANDBOX = "finx"  # store alongside accounts like your other sandbox keys
@@ -386,7 +388,7 @@ def _tpp_client_credentials_token() -> dict:
 
 def _openid_config(tpp_access_token: str | None = None) -> dict:
     r = requests.get(
-        FINX_OPENID_CONFIG_URL,
+        f"{COMPLY_API_BASE}/.well-known/openid-configuration",
         headers={
             "Authorization": f"Bearer {tpp_access_token}" if tpp_access_token else "",
             "x-ftg-institution-application-code": FINX_INSTITUTION_APP_CODE,
@@ -966,77 +968,57 @@ def ahli_get_transactions(uid: str, account_id: str):
     return {"status": "success", "transactions_synced": count}
 
 
-"""
 #####################################################CAPITAL BANK (CBOJ) ##########################################################
-# Uses the same Comply platform but different institution app code / sandbox
-CBOJ_INSTITUTION_APP_CODE = os.getenv("CBOJ_INSTITUTION_APP_CODE", "")
-CBOJ_REDIRECT_URI = os.getenv("CBOJ_REDIRECT_URI", "")  # e.g. "https://backend-vesta.onrender.com/banks/capital/callback"
-
-# Optionally override client credentials for CBOJ (falls back to VESTA_ if not set)
-CBOJ_CLIENT_ID = os.getenv("CBOJ_CLIENT_ID", "") or AHLI_CLIENT_ID
-CBOJ_CLIENT_SECRET = os.getenv("CBOJ_CLIENT_SECRET", "") or AHLI_CLIENT_SECRET
-
-# Optionally override Comply host / API base for CBOJ
-CBOJ_COMPLY_HOST = os.getenv("CBOJ_COMPLY_HOST", COMPLY_HOST).rstrip("/")
-CBOJ_API_BASE = os.getenv("CBOJ_API_BASE", f"{CBOJ_COMPLY_HOST}/api/public/jo/v0.4").rstrip("/")
-
-# Signing key (reuse or override)
-CBOJ_SIGNING_KEY = os.getenv("CBOJ_SIGNING_KEY", "") or VESTA_AHLI_SIGNING_KEY
+# Capital Bank has its own sandbox (not FINX Comply)
+CBOJ_CLIENT_ID = os.getenv("CBOJ_CLIENT_ID", "")
+CBOJ_CLIENT_SECRET = os.getenv("CBOJ_CLIENT_SECRET", "")
+CBOJ_REDIRECT_URI = os.getenv("CBOJ_REDIRECT_URI", "")
+CBOJ_SANDBOX_HOST = os.getenv("CBOJ_SANDBOX_HOST", "https://sandbox.api.capitalbank.jo:8448").rstrip("/")
+CBOJ_API_BASE = os.getenv("CBOJ_API_BASE", f"{CBOJ_SANDBOX_HOST}/ob/api/ais").rstrip("/")
+CBOJ_TOKEN_URL = os.getenv("CBOJ_TOKEN_URL", f"{CBOJ_SANDBOX_HOST}/ob/oauth2/token")
+CBOJ_AUTHORIZE_URL = os.getenv("CBOJ_AUTHORIZE_URL", f"{CBOJ_SANDBOX_HOST}/ob/web/login")
 
 CBOJ_PROVIDER_KEY = "capital"
 CBOJ_PROVIDER_LABEL = "Capital"
-CBOJ_SANDBOX = "finx"
+CBOJ_SANDBOX = "capitalbank"
 
 
 # ----------------------------
-# CBOJ Helpers
+# CBOJ Helpers (Capital Bank direct sandbox — NOT FINX Comply)
 # ----------------------------
 def _cboj_require_env() -> None:
     missing = []
-    if not CBOJ_CLIENT_ID: missing.append("CBOJ_CLIENT_ID / AHLI_CLIENT_ID")
-    if not CBOJ_CLIENT_SECRET: missing.append("CBOJ_CLIENT_SECRET / AHLI_CLIENT_SECRET")
-    if not CBOJ_INSTITUTION_APP_CODE: missing.append("CBOJ_INSTITUTION_APP_CODE")
+    if not CBOJ_CLIENT_ID: missing.append("CBOJ_CLIENT_ID")
+    if not CBOJ_CLIENT_SECRET: missing.append("CBOJ_CLIENT_SECRET")
     if not CBOJ_REDIRECT_URI: missing.append("CBOJ_REDIRECT_URI")
     if missing:
         raise HTTPException(status_code=500, detail=f"Missing env vars: {', '.join(missing)}")
 
 
 def _cboj_tpp_token() -> dict:
-    Client credentials token for CBOJ sandbox
+    """Client credentials token from Capital Bank's own OAuth server."""
     _cboj_require_env()
-    url = f"{CBOJ_COMPLY_HOST}/keycloak/realms/open-banking/protocol/openid-connect/token"
-    r = requests.post(url, data={"grant_type": "client_credentials"},
-                      auth=(CBOJ_CLIENT_ID, CBOJ_CLIENT_SECRET), timeout=20)
-    r.raise_for_status()
-    return r.json()
-
-
-def _cboj_openid_config(tpp_access_token: str | None = None) -> dict:
-    r = requests.get(
-        f"{CBOJ_API_BASE}/.well-known/openid-configuration",
-        headers={
-            "Authorization": f"Bearer {tpp_access_token}" if tpp_access_token else "",
-            "x-ftg-institution-application-code": CBOJ_INSTITUTION_APP_CODE,
-            "Accept": "application/json",
-            "x-interactions-id": str(uuid.uuid4()),
-        },
-        timeout=20,
-    )
+    data = {
+        "grant_type": "client_credentials",
+        "client_id": CBOJ_CLIENT_ID,
+        "client_secret": CBOJ_CLIENT_SECRET,
+        "scope": "accounts",
+    }
+    r = requests.post(CBOJ_TOKEN_URL, data=data, timeout=20)
     r.raise_for_status()
     return r.json()
 
 
 def _cboj_create_consent(tpp_access_token: str, permissions: list[str],
                          tx_from: datetime, tx_to: datetime) -> dict:
-    
+    """
     POST /account-access-consents
     CBOJ spec requires transactionFromDateTime + transactionToDateTime.
     Response returns consentRef (not consentId).
-    
+    """
     url = f"{CBOJ_API_BASE}/account-access-consents"
     headers = {
         "Authorization": f"Bearer {tpp_access_token}",
-        "x-ftg-institution-application-code": CBOJ_INSTITUTION_APP_CODE,
         "x-interactions-id": str(uuid.uuid4()),
         "Content-Type": "application/json",
         "Accept": "application/json",
@@ -1051,94 +1033,60 @@ def _cboj_create_consent(tpp_access_token: str, permissions: list[str],
     return r.json()
 
 
-def _cboj_build_auth_url(openid_conf: dict, *, consent_ref: str,
-                         state: str, code_challenge: str) -> str:
-    Build authorize URL for CBOJ, with JWT request param and PKCE.
+def _cboj_build_auth_url(*, consent_ref: str, state: str, code_challenge: str) -> str:
+    """
+    Build authorize URL for Capital Bank's direct sandbox.
+    Uses standard OAuth2 authorize — no JWT request param needed.
+    """
     _cboj_require_env()
-
-    auth_ep = (openid_conf.get("authorization_endpoint") or "").strip()
-    if not auth_ep:
-        raise HTTPException(status_code=500, detail="CBOJ OpenID config missing authorization_endpoint")
-
-    signing_key = CBOJ_SIGNING_KEY
-    if not signing_key:
-        raise HTTPException(status_code=500, detail="Missing CBOJ_SIGNING_KEY / VESTA_AHLI_SIGNING_KEY")
-
-    issuer = (openid_conf.get("issuer") or "").strip()
-    nonce = uuid.uuid4().hex
-    now = int(time.time())
-
-    aud = [issuer, auth_ep.split("/sandbox/")[0]] if issuer else [auth_ep.split("/sandbox/")[0]]
-
-    request_obj = {
-        "iss": CBOJ_CLIENT_ID,
-        "aud": aud,
-        "response_type": "code",
-        "client_id": CBOJ_CLIENT_ID,
-        "redirect_uri": CBOJ_REDIRECT_URI,
-        "scope": "openid accounts",
-        "state": state,
-        "nonce": nonce,
-        "openbanking_intent_id": consent_ref,
-        "code_challenge": code_challenge,
-        "code_challenge_method": "S256",
-        "iat": now,
-        "exp": now + 300,
-        "jti": uuid.uuid4().hex,
-    }
-
-    request_jwt = jwt.encode(request_obj, signing_key, algorithm="RS256")
 
     params = {
         "client_id": CBOJ_CLIENT_ID,
-        "scope": "openid accounts",
         "response_type": "code",
         "redirect_uri": CBOJ_REDIRECT_URI,
+        "scope": "openid accounts",
         "state": state,
-        "nonce": nonce,
+        "nonce": uuid.uuid4().hex,
+        "consentRef": consent_ref,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
-        "request": request_jwt,
     }
-    return f"{auth_ep}?{urlencode(params)}"
+    return f"{CBOJ_AUTHORIZE_URL}?{urlencode(params)}"
 
 
-def _cboj_exchange_code(openid_conf: dict, *, code: str, code_verifier: str) -> dict:
-    token_ep = openid_conf.get("token_endpoint") or \
-               f"{CBOJ_COMPLY_HOST}/keycloak/realms/open-banking/protocol/openid-connect/token"
+def _cboj_exchange_code(*, code: str, code_verifier: str) -> dict:
+    """Exchange authorization code for PSU tokens."""
     data = {
         "grant_type": "authorization_code",
         "client_id": CBOJ_CLIENT_ID,
+        "client_secret": CBOJ_CLIENT_SECRET,
         "code": code,
         "redirect_uri": CBOJ_REDIRECT_URI,
         "code_verifier": code_verifier,
     }
-    r = requests.post(token_ep, data=data, auth=(CBOJ_CLIENT_ID, CBOJ_CLIENT_SECRET), timeout=25)
+    r = requests.post(CBOJ_TOKEN_URL, data=data, timeout=25)
     r.raise_for_status()
     return r.json()
 
 
-def _cboj_refresh_token(openid_conf: dict, *, refresh_token: str) -> dict:
-    token_ep = openid_conf.get("token_endpoint") or \
-               f"{CBOJ_COMPLY_HOST}/keycloak/realms/open-banking/protocol/openid-connect/token"
+def _cboj_refresh_token(*, refresh_token: str) -> dict:
+    """Refresh an expired PSU access token."""
     data = {
         "grant_type": "refresh_token",
         "client_id": CBOJ_CLIENT_ID,
+        "client_secret": CBOJ_CLIENT_SECRET,
         "refresh_token": refresh_token,
     }
-    r = requests.post(token_ep, data=data, auth=(CBOJ_CLIENT_ID, CBOJ_CLIENT_SECRET), timeout=25)
+    r = requests.post(CBOJ_TOKEN_URL, data=data, timeout=25)
     r.raise_for_status()
     return r.json()
 
 
 def _cboj_headers_psu(psu_access_token: str) -> dict:
-    
-    Headers for CBOJ data APIs. Per YAML spec, x-interactions-id and
-    x-idempotency-key are both required.
-    
+    """Headers for CBOJ data APIs. Per YAML spec, x-interactions-id and
+    x-idempotency-key are both required."""
     return {
         "Authorization": f"Bearer {psu_access_token}",
-        "x-ftg-institution-application-code": CBOJ_INSTITUTION_APP_CODE,
         "Accept": "application/json",
         "x-interactions-id": str(uuid.uuid4()),
         "x-idempotency-key": str(uuid.uuid4()),
@@ -1164,7 +1112,7 @@ def _cboj_read_provider_state(uid: str) -> dict:
 
 
 def _cboj_ensure_psu_token(uid: str) -> str:
-    Load stored PSU token for CBOJ; refresh if expired
+    """Load stored PSU token for CBOJ; refresh if expired."""
     st = _cboj_read_provider_state(uid)
     tokens = st.get("tokens") or {}
     access_token = tokens.get("access_token")
@@ -1183,9 +1131,7 @@ def _cboj_ensure_psu_token(uid: str) -> str:
         return access_token
 
     if exp <= (_utc_now() + timedelta(seconds=60)) and refresh_token:
-        tpp = _cboj_tpp_token()
-        oidc = _cboj_openid_config(tpp.get("access_token"))
-        newt = _cboj_refresh_token(oidc, refresh_token=refresh_token)
+        newt = _cboj_refresh_token(refresh_token=refresh_token)
 
         new_access = newt.get("access_token", access_token)
         new_refresh = newt.get("refresh_token", refresh_token)
@@ -1213,9 +1159,9 @@ def _cboj_ensure_psu_token(uid: str) -> str:
 @app.get("/banks/capital/start_link/{uid}")
 def capital_start_link(uid: str):
     
-    1) Get TPP token (client_credentials)
-    2) Create consent with CBOJ-spec permissions
-    3) Build auth URL for user to open in WebView/browser
+    #1) Get TPP token (client_credentials)
+    #2) Create consent with CBOJ-spec permissions
+    #3) Build auth URL for user to open in WebView/browser
     
     _cboj_require_env()
 
@@ -1234,8 +1180,6 @@ def capital_start_link(uid: str):
     tpp_access = tpp.get("access_token", "")
     if not tpp_access:
         raise HTTPException(status_code=500, detail="Failed to get CBOJ TPP access_token")
-
-    oidc = _cboj_openid_config(tpp_access)
 
     consent = _cboj_create_consent(tpp_access, permissions=permissions,
                                    tx_from=tx_from, tx_to=tx_to)
@@ -1267,7 +1211,6 @@ def capital_start_link(uid: str):
     })
 
     auth_url = _cboj_build_auth_url(
-        oidc,
         consent_ref=consent_ref,
         state=state,
         code_challenge=code_challenge,
@@ -1310,10 +1253,7 @@ def capital_callback(request: Request):
     if not expected_state or expected_state != state:
         return HTMLResponse("Invalid state", status_code=400)
 
-    tpp = _cboj_tpp_token()
-    oidc = _cboj_openid_config(tpp.get("access_token"))
-
-    tokens = _cboj_exchange_code(oidc, code=code, code_verifier=code_verifier)
+    tokens = _cboj_exchange_code(code=code, code_verifier=code_verifier)
 
     access_token = tokens.get("access_token")
     refresh_token = tokens.get("refresh_token")
@@ -1353,7 +1293,7 @@ def capital_callback(request: Request):
 
 
 def _cboj_sync_accounts_internal(uid: str) -> dict:
-    Fetch accounts from CBOJ and store in Firestore.
+    #Fetch accounts from CBOJ and store in Firestore.
     psu_token = _cboj_ensure_psu_token(uid)
     headers = _cboj_headers_psu(psu_token)
 
@@ -1448,7 +1388,7 @@ def _cboj_sync_accounts_internal(uid: str) -> dict:
 
 @app.get("/banks/capital/sync_accounts/{uid}")
 def capital_sync_accounts(uid: str):
-    # Refresh accounts from Capital Bank via Comply
+    # Refresh accounts from Capital Bank
     out = _cboj_sync_accounts_internal(uid)
     return {"status": "success", **out}
 
@@ -1567,7 +1507,7 @@ def capital_get_transactions(uid: str, account_id: str):
 
 @app.get("/banks/capital/get_transaction/{uid}/{account_id}/{transaction_id}")
 def capital_get_transaction(uid: str, account_id: str, transaction_id: str):
-    GET /accounts/{accountId}/transactions/{transactionId
+    #GET /accounts/{accountId}/transactions/{transactionId
     psu_token = _cboj_ensure_psu_token(uid)
     headers = _cboj_headers_psu(psu_token)
 
@@ -1579,7 +1519,7 @@ def capital_get_transaction(uid: str, account_id: str, transaction_id: str):
 
 @app.get("/banks/capital/get_beneficiaries/{uid}")
 def capital_get_beneficiaries(uid: str):
-    GET /beneficiaries
+    #GET /beneficiaries
     psu_token = _cboj_ensure_psu_token(uid)
     headers = _cboj_headers_psu(psu_token)
 
@@ -1591,7 +1531,7 @@ def capital_get_beneficiaries(uid: str):
 
 @app.get("/banks/capital/get_beneficiary/{uid}/{beneficiary_id}")
 def capital_get_beneficiary(uid: str, beneficiary_id: str):
-    ]GET /beneficiaries/{beneficiaryId 
+    #]GET /beneficiaries/{beneficiaryId 
     psu_token = _cboj_ensure_psu_token(uid)
     headers = _cboj_headers_psu(psu_token)
 
@@ -1603,7 +1543,7 @@ def capital_get_beneficiary(uid: str, beneficiary_id: str):
 
 @app.get("/banks/capital/get_sosps/{uid}/{account_id}")
 def capital_get_sosps(uid: str, account_id: str):
-     GET /accounts/{accountId}/sosp - Standing Orders & Scheduled Payments
+     #GET /accounts/{accountId}/sosp - Standing Orders & Scheduled Payments
     psu_token = _cboj_ensure_psu_token(uid)
     headers = _cboj_headers_psu(psu_token)
 
@@ -1615,7 +1555,7 @@ def capital_get_sosps(uid: str, account_id: str):
 
 @app.get("/banks/capital/get_sosp/{uid}/{account_id}/{sosp_id}")
 def capital_get_sosp(uid: str, account_id: str, sosp_id: str):
-     GET /accounts/{accountId}/sosp/{sospId 
+    #GET /accounts/{accountId}/sosp/{sospId 
     psu_token = _cboj_ensure_psu_token(uid)
     headers = _cboj_headers_psu(psu_token)
 
@@ -1627,7 +1567,7 @@ def capital_get_sosp(uid: str, account_id: str, sosp_id: str):
 
 @app.get("/banks/capital/get_consent/{uid}")
 def capital_get_consent(uid: str):
-     GET /account-access-consents/{consentRef} - Check consent status
+    #GET /account-access-consents/{consentRef} - Check consent status
     st = _cboj_read_provider_state(uid)
     consent_ref = st.get("consentRef")
     if not consent_ref:
@@ -1637,7 +1577,6 @@ def capital_get_consent(uid: str):
     tpp_access = tpp.get("access_token", "")
     headers = {
         "Authorization": f"Bearer {tpp_access}",
-        "x-ftg-institution-application-code": CBOJ_INSTITUTION_APP_CODE,
         "Accept": "application/json",
         "x-interactions-id": str(uuid.uuid4()),
     }
@@ -1650,7 +1589,7 @@ def capital_get_consent(uid: str):
 
 @app.delete("/banks/capital/revoke_consent/{uid}")
 def capital_revoke_consent(uid: str):
-    DELETE /account-access-consents/{consentRef} - Revoke consent
+    #DELETE /account-access-consents/{consentRef} - Revoke consent
     st = _cboj_read_provider_state(uid)
     consent_ref = st.get("consentRef")
     if not consent_ref:
@@ -1660,7 +1599,6 @@ def capital_revoke_consent(uid: str):
     tpp_access = tpp.get("access_token", "")
     headers = {
         "Authorization": f"Bearer {tpp_access}",
-        "x-ftg-institution-application-code": CBOJ_INSTITUTION_APP_CODE,
         "Accept": "application/json",
         "x-interactions-id": str(uuid.uuid4()),
     }
@@ -1678,7 +1616,7 @@ def capital_revoke_consent(uid: str):
     })
 
     return {"status": "success", "message": "Consent revoked"}
-"""
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))  # Render sets PORT automatically
