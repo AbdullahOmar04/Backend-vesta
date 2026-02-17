@@ -1035,14 +1035,14 @@ def _cboj_create_consent(tpp_access_token: str, permissions: list[str],
     return r.json()
 
 
-def _cboj_build_auth_url(*, consent_ref: str, state: str,
-                         login_url: str | None = None) -> str:
-    """
-    Build authorize URL for Capital Bank's direct sandbox.
-    Per the CBOJ spec, the consent response includes loginUrls with format:
-      https://{hostname}/ob/web/login?consentRef={consentRef}
-    We append redirect_uri and state for the callback.
-    """
+def _cboj_build_auth_url(
+    *,
+    consent_ref: str,
+    state: str,
+    login_url: str | None = None,
+    code_challenge: str | None = None,
+    code_challenge_method: str = "S256",
+) -> str:
     _cboj_require_env()
 
     extra = {
@@ -1053,26 +1053,40 @@ def _cboj_build_auth_url(*, consent_ref: str, state: str,
         "state": state,
     }
 
+    # ✅ PKCE
+    if code_challenge:
+        extra["code_challenge"] = code_challenge
+        extra["code_challenge_method"] = code_challenge_method
+
     if login_url:
-        # Use the loginUrl from the consent response (includes consentRef)
         separator = "&" if "?" in login_url else "?"
         return f"{login_url}{separator}{urlencode(extra)}"
 
-    # Fallback: build manually
     extra["consentRef"] = consent_ref
     return f"{CBOJ_AUTHORIZE_URL}?{urlencode(extra)}"
 
 
-def _cboj_exchange_code(*, code: str) -> dict:
-    """Exchange authorization code for PSU tokens."""
+
+def _cboj_exchange_code(*, code: str, code_verifier: str) -> dict:
+    """Exchange authorization code for PSU tokens (PKCE)."""
     data = {
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": CBOJ_REDIRECT_URI,
+        "code_verifier": code_verifier,   # ✅ REQUIRED if PKCE is used
     }
-    r = requests.post(CBOJ_TOKEN_URL, data=data,
-                      auth=(CBOJ_CLIENT_ID, CBOJ_CLIENT_SECRET), timeout=25)
-    r.raise_for_status()
+
+    r = requests.post(
+        CBOJ_TOKEN_URL,
+        data=data,
+        auth=(CBOJ_CLIENT_ID, CBOJ_CLIENT_SECRET),
+        timeout=25,
+    )
+
+    # Better debugging
+    if r.status_code >= 400:
+        raise HTTPException(status_code=400, detail=f"Token exchange failed: {r.status_code} {r.text[:500]}")
+
     return r.json()
 
 
@@ -1209,7 +1223,7 @@ def capital_start_link(uid: str):
     login_url = login_urls[0] if login_urls else None
 
     state = uuid.uuid4().hex
-    code_verifier, _ = _pkce_pair()
+    code_verifier, code_challenge = _pkce_pair()  # ✅ keep both
 
     _cboj_write_provider_state(uid, {
         "provider": CBOJ_PROVIDER_LABEL,
@@ -1234,6 +1248,8 @@ def capital_start_link(uid: str):
         consent_ref=consent_ref,
         state=state,
         login_url=login_url,
+        code_challenge=code_challenge,        # ✅ add
+        code_challenge_method="S256",         # ✅ add
     )
 
     return {"status": "ok", "consentRef": consent_ref, "authUrl": auth_url}
@@ -1274,7 +1290,7 @@ def capital_callback(request: Request):
         return HTMLResponse("Invalid state", status_code=400)
 
     try:
-        tokens = _cboj_exchange_code(code=code)
+        tokens = _cboj_exchange_code(code=code, code_verifier=code_verifier)
     except requests.exceptions.HTTPError as e:
         return HTMLResponse(
             f"Token exchange failed: {e.response.status_code} {e.response.text[:500]}",
