@@ -1000,10 +1000,11 @@ def _cboj_tpp_token() -> dict:
     _cboj_require_env()
     data = {
         "grant_type": "client_credentials",
+        "client_id": CBOJ_CLIENT_ID,
+        "client_secret": CBOJ_CLIENT_SECRET,
         "scope": "accounts",
     }
-    r = requests.post(CBOJ_TOKEN_URL, data=data,
-                      auth=(CBOJ_CLIENT_ID, CBOJ_CLIENT_SECRET), timeout=20)
+    r = requests.post(CBOJ_TOKEN_URL, data=data, timeout=20)
     r.raise_for_status()
     return r.json()
 
