@@ -1063,7 +1063,7 @@ def _cboj_build_auth_url(*, consent_ref: str, state: str,
     return f"{CBOJ_AUTHORIZE_URL}?{urlencode(extra)}"
 
 
-def _cboj_exchange_code(*, code: str, code_verifier: str) -> dict:
+def _cboj_exchange_code(*, code: str) -> dict:
     """Exchange authorization code for PSU tokens."""
     data = {
         "grant_type": "authorization_code",
@@ -1071,7 +1071,6 @@ def _cboj_exchange_code(*, code: str, code_verifier: str) -> dict:
         "client_secret": CBOJ_CLIENT_SECRET,
         "code": code,
         "redirect_uri": CBOJ_REDIRECT_URI,
-        "code_verifier": code_verifier,
     }
     r = requests.post(CBOJ_TOKEN_URL, data=data, timeout=25)
     r.raise_for_status()
@@ -1276,7 +1275,15 @@ def capital_callback(request: Request):
     if not expected_state or expected_state != state:
         return HTMLResponse("Invalid state", status_code=400)
 
-    tokens = _cboj_exchange_code(code=code, code_verifier=code_verifier)
+    try:
+        tokens = _cboj_exchange_code(code=code)
+    except requests.exceptions.HTTPError as e:
+        return HTMLResponse(
+            f"Token exchange failed: {e.response.status_code} {e.response.text[:500]}",
+            status_code=400,
+        )
+    except Exception as e:
+        return HTMLResponse(f"Token exchange error: {e}", status_code=400)
 
     access_token = tokens.get("access_token")
     refresh_token = tokens.get("refresh_token")
@@ -1284,7 +1291,7 @@ def capital_callback(request: Request):
     exp = _utc_now() + timedelta(seconds=max(ttl, 0))
 
     if not access_token:
-        return HTMLResponse(f"Token exchange failed: {tokens}", status_code=400)
+        return HTMLResponse(f"Token exchange returned no access_token: {tokens}", status_code=400)
 
     _cboj_write_provider_state(uid, {
         "provider": CBOJ_PROVIDER_LABEL,
