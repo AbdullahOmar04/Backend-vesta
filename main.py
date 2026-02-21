@@ -1004,7 +1004,7 @@ def _cboj_tpp_token() -> dict:
         "client_secret": CBOJ_CLIENT_SECRET,
         "scope": "accounts",
     }
-    r = requests.post(CBOJ_TOKEN_URL, data=data, timeout=20)
+    r = requests.post(CBOJ_TOKEN_URL, data=data, timeout=20, verify=False)
     r.raise_for_status()
     return r.json()
 
@@ -1030,7 +1030,7 @@ def _cboj_create_consent(tpp_access_token: str, permissions: list[str],
         "transactionToDate": _iso(tx_to),
         "permissions": permissions,
     }
-    r = requests.post(url, headers=headers, json=payload, timeout=25)
+    r = requests.post(url, headers=headers, json=payload, timeout=25, verify=False)
     r.raise_for_status()
     return r.json()
 
@@ -1081,6 +1081,7 @@ def _cboj_exchange_code(*, code: str, code_verifier: str) -> dict:
         data=data,
         auth=(CBOJ_CLIENT_ID, CBOJ_CLIENT_SECRET),
         timeout=25,
+        verify=False,
     )
 
     # Better debugging
@@ -1097,7 +1098,8 @@ def _cboj_refresh_token(*, refresh_token: str) -> dict:
         "refresh_token": refresh_token,
     }
     r = requests.post(CBOJ_TOKEN_URL, data=data,
-                      auth=(CBOJ_CLIENT_ID, CBOJ_CLIENT_SECRET), timeout=25)
+                      auth=(CBOJ_CLIENT_ID, CBOJ_CLIENT_SECRET), timeout=25,
+                      verify=False)
     r.raise_for_status()
     return r.json()
 
@@ -1198,20 +1200,22 @@ def capital_start_link(uid: str):
 
     try:
         tpp = _cboj_tpp_token()
-    except requests.exceptions.ConnectionError as e:
-        raise HTTPException(status_code=502, detail=f"Cannot reach Capital Bank sandbox ({CBOJ_TOKEN_URL}): {e}")
     except requests.exceptions.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"Capital Bank token error: {e.response.status_code} {e.response.text[:500]}")
+        raise HTTPException(status_code=502, detail=f"TPP token failed: {e.response.status_code} {e.response.text[:500]}")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"TPP token error ({type(e).__name__}): {e}")
 
     tpp_access = tpp.get("access_token", "")
     if not tpp_access:
-        raise HTTPException(status_code=500, detail=f"Failed to get CBOJ TPP access_token. Response: {tpp}")
+        raise HTTPException(status_code=500, detail=f"No access_token in TPP response: {tpp}")
 
     try:
         consent = _cboj_create_consent(tpp_access, permissions=permissions,
                                        tx_from=tx_from, tx_to=tx_to)
     except requests.exceptions.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Consent creation failed: {e.response.status_code} {e.response.text[:500]}")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Consent creation error ({type(e).__name__}): {e}")
 
     # CBOJ uses consentRef (not consentId)
     consent_ref = consent.get("consentRef") or consent.get("consentId")
