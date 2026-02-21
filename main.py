@@ -975,7 +975,8 @@ CBOJ_CLIENT_SECRET = os.getenv("CBOJ_CLIENT_SECRET", "")
 CBOJ_REDIRECT_URI = os.getenv("CBOJ_REDIRECT_URI", "")
 CBOJ_SANDBOX_HOST = os.getenv("CBOJ_SANDBOX_HOST", "https://sandbox.api.capitalbank.jo:8448").rstrip("/")
 CBOJ_API_BASE = os.getenv("CBOJ_API_BASE", f"{CBOJ_SANDBOX_HOST}/ob/api/ais").rstrip("/")
-CBOJ_TOKEN_URL = os.getenv("CBOJ_TOKEN_URL", f"{CBOJ_SANDBOX_HOST}/ob/oauth2/token")
+CBOJ_TOKEN_URL = os.getenv("CBOJ_TOKEN_URL", f"{CBOJ_SANDBOX_HOST}/ob/oauth2/token")      # TPP client_credentials
+CBOJ_PSU_TOKEN_URL = os.getenv("CBOJ_PSU_TOKEN_URL", CBOJ_TOKEN_URL)                        # PSU auth code exchange
 CBOJ_AUTHORIZE_URL = os.getenv("CBOJ_AUTHORIZE_URL", f"{CBOJ_SANDBOX_HOST}/ob/web/login")
 
 CBOJ_PROVIDER_KEY = "capital"
@@ -1068,23 +1069,25 @@ def _cboj_build_auth_url(
 
 
 def _cboj_exchange_code(*, code: str, code_verifier: str) -> dict:
-    """Exchange authorization code for PSU tokens (PKCE)."""
+    """Exchange authorization code for PSU tokens (PKCE).
+    Uses CBOJ_PSU_TOKEN_URL (sandboxauth host) — different from the TPP token URL.
+    """
     data = {
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": CBOJ_REDIRECT_URI,
-        "code_verifier": code_verifier,   # ✅ REQUIRED if PKCE is used
+        "code_verifier": code_verifier,
+        "client_id": CBOJ_CLIENT_ID,
     }
 
     r = requests.post(
-        CBOJ_TOKEN_URL,
+        CBOJ_PSU_TOKEN_URL,
         data=data,
         auth=(CBOJ_CLIENT_ID, CBOJ_CLIENT_SECRET),
         timeout=25,
         verify=False,
     )
 
-    # Better debugging
     if r.status_code >= 400:
         raise HTTPException(status_code=400, detail=f"Token exchange failed: {r.status_code} {r.text[:500]}")
 
