@@ -1078,12 +1078,12 @@ def _cboj_exchange_code(*, code: str, code_verifier: str) -> dict:
         "redirect_uri": CBOJ_REDIRECT_URI,
         "code_verifier": code_verifier,
         "client_id": CBOJ_CLIENT_ID,
+        "client_secret": CBOJ_CLIENT_SECRET,
     }
 
     r = requests.post(
         CBOJ_PSU_TOKEN_URL,
         data=data,
-        auth=(CBOJ_CLIENT_ID, CBOJ_CLIENT_SECRET),
         timeout=25,
         verify=False,
     )
