@@ -1068,15 +1068,14 @@ def _cboj_build_auth_url(
 
 
 
-def _cboj_exchange_code(*, code: str, code_verifier: str) -> dict:
-    """Exchange authorization code for PSU tokens (PKCE).
-    Uses CBOJ_PSU_TOKEN_URL (sandboxauth host) — different from the TPP token URL.
+def _cboj_exchange_code(*, code: str) -> dict:
+    """Exchange authorization code for PSU tokens.
+    Uses CBOJ_PSU_TOKEN_URL (sandboxauth host). No PKCE — Capital Bank sandbox doesn't support it.
     """
     data = {
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": CBOJ_REDIRECT_URI,
-        "code_verifier": code_verifier,
         "client_id": CBOJ_CLIENT_ID,
         "client_secret": CBOJ_CLIENT_SECRET,
     }
@@ -1230,7 +1229,6 @@ def capital_start_link(uid: str):
     login_url = login_urls[0] if login_urls else None
 
     state = uuid.uuid4().hex
-    code_verifier, code_challenge = _pkce_pair()  # ✅ keep both
 
     _cboj_write_provider_state(uid, {
         "provider": CBOJ_PROVIDER_LABEL,
@@ -1247,7 +1245,6 @@ def capital_start_link(uid: str):
         "uid": uid,
         "bank": CBOJ_PROVIDER_KEY,
         "consentRef": consent_ref,
-        "code_verifier": code_verifier,
         "createdAt": firestore.SERVER_TIMESTAMP,
     })
 
@@ -1255,8 +1252,6 @@ def capital_start_link(uid: str):
         consent_ref=consent_ref,
         state=state,
         login_url=login_url,
-        code_challenge=code_challenge,        # ✅ add
-        code_challenge_method="S256",         # ✅ add
     )
 
     return {"status": "ok", "consentRef": consent_ref, "authUrl": auth_url}
@@ -1287,17 +1282,13 @@ def capital_callback(request: Request):
     if not uid:
         return HTMLResponse("Invalid session: missing uid", status_code=400)
 
-    code_verifier = (session.get("code_verifier") or "").strip()
-    if not code_verifier:
-        return HTMLResponse("Invalid session: missing code_verifier", status_code=400)
-
     st = _cboj_read_provider_state(uid)
     expected_state = (st.get("state") or "").strip()
     if not expected_state or expected_state != state:
         return HTMLResponse("Invalid state", status_code=400)
 
     try:
-        tokens = _cboj_exchange_code(code=code, code_verifier=code_verifier)
+        tokens = _cboj_exchange_code(code=code)
     except requests.exceptions.HTTPError as e:
         return HTMLResponse(
             f"Token exchange failed: {e.response.status_code} {e.response.text[:500]}",
