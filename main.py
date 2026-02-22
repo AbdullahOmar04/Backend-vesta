@@ -1025,8 +1025,6 @@ def _cboj_create_consent(tpp_access_token: str, permissions: list[str],
         "Accept": "application/json",
     }
     payload = {
-        "transactionFromDateTime": _iso(tx_from),
-        "transactionToDateTime": _iso(tx_to),
         "transactionFromDate": _iso(tx_from),
         "transactionToDate": _iso(tx_to),
         "permissions": permissions,
@@ -1069,24 +1067,22 @@ def _cboj_build_auth_url(
 
 
 def _cboj_exchange_code(*, code: str) -> dict:
-    """Exchange authorization code for PSU tokens."""
+    """Exchange authorization code for PSU tokens.
+    Per docs: same endpoint as client_credentials (sandbox.api.capitalbank.jo:8448).
+    No PKCE. Requires scope=accounts.
+    """
     data = {
         "grant_type": "authorization_code",
         "code": code,
+        "client_id": CBOJ_CLIENT_ID,
+        "client_secret": CBOJ_CLIENT_SECRET,
+        "scope": "accounts",
         "redirect_uri": CBOJ_REDIRECT_URI,
     }
 
-    # Explicitly set headers required by most Open Banking specs
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/x-www-form-urlencoded"
-    }
-
     r = requests.post(
-        CBOJ_PSU_TOKEN_URL,
+        CBOJ_TOKEN_URL,          # same host as TPP token per docs
         data=data,
-        headers=headers,
-        auth=(CBOJ_CLIENT_ID, CBOJ_CLIENT_SECRET),  # <-- Use Basic Auth here
         timeout=25,
         verify=False,
     )
@@ -1102,10 +1098,12 @@ def _cboj_refresh_token(*, refresh_token: str) -> dict:
     data = {
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
+        "client_id": CBOJ_CLIENT_ID,
+        "client_secret": CBOJ_CLIENT_SECRET,
+        "scope": "accounts",
+        "redirect_uri": CBOJ_REDIRECT_URI,
     }
-    r = requests.post(CBOJ_TOKEN_URL, data=data,
-                      auth=(CBOJ_CLIENT_ID, CBOJ_CLIENT_SECRET), timeout=25,
-                      verify=False)
+    r = requests.post(CBOJ_TOKEN_URL, data=data, timeout=25, verify=False)
     r.raise_for_status()
     return r.json()
 
