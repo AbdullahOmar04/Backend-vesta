@@ -1069,20 +1069,24 @@ def _cboj_build_auth_url(
 
 
 def _cboj_exchange_code(*, code: str) -> dict:
-    """Exchange authorization code for PSU tokens.
-    Uses CBOJ_PSU_TOKEN_URL (sandboxauth host). No PKCE — Capital Bank sandbox doesn't support it.
-    """
+    """Exchange authorization code for PSU tokens."""
     data = {
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": CBOJ_REDIRECT_URI,
-        "client_id": CBOJ_CLIENT_ID,
-        "client_secret": CBOJ_CLIENT_SECRET,
+    }
+
+    # Explicitly set headers required by most Open Banking specs
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded"
     }
 
     r = requests.post(
         CBOJ_PSU_TOKEN_URL,
         data=data,
+        headers=headers,
+        auth=(CBOJ_CLIENT_ID, CBOJ_CLIENT_SECRET),  # <-- Use Basic Auth here
         timeout=25,
         verify=False,
     )
