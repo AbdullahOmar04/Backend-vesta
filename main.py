@@ -1343,7 +1343,9 @@ def _cboj_sync_accounts_internal(uid: str) -> dict:
 
     url = f"{CBOJ_API_BASE}/accounts"
     r = requests.get(url, headers=headers, timeout=25)
-    r.raise_for_status()
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code,
+                            detail=f"Capital Bank accounts error: {r.status_code} {r.text[:300]}")
 
     body = r.json()
     accounts = body.get("data") if isinstance(body, dict) else None
@@ -1484,7 +1486,12 @@ def capital_get_transactions(uid: str, account_id: str):
 
     url = f"{CBOJ_API_BASE}/accounts/{account_id}/transactions"
     r = requests.get(url, headers=headers, timeout=25)
-    r.raise_for_status()
+    # Capital Bank returns 404 when account has no transactions (not
+    if r.status_code == 404:
+        return {"status": "success", "transactions_synced": 0}
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code,
+                            detail=f"Capital Bank transactions error for {account_id}: {r.status_code} {r.text[:300]}")
 
     body = r.json()
     txs = body.get("data") if isinstance(body, dict) else None
