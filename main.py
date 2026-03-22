@@ -1497,8 +1497,8 @@ def capital_get_transactions(uid: str, account_id: str, _uid: str = Depends(get_
 
     url = f"{CBOJ_API_BASE}/accounts/{account_id}/transactions"
     r = requests.get(url, headers=headers, timeout=25)
-    # Capital Bank returns 404 when account has no transactions (not
-    if r.status_code == 404:
+    # Capital Bank returns 404 or 500 when account has no transactions
+    if r.status_code in (404, 500) or r.status_code >= 500:
         return {"status": "success", "transactions_synced": 0}
     if r.status_code >= 400:
         raise HTTPException(status_code=r.status_code,
