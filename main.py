@@ -319,14 +319,23 @@ def get_sosps(uid: str, account_id: str, _uid: str = Depends(get_authenticated_u
 
 #########################################################################################################################
 
+_subscribe_attempts: dict[str, list[float]] = {}
+_SUBSCRIBE_LIMIT = 5
+_SUBSCRIBE_WINDOW = 3600.0  # 1 hour
+
+
 @app.get("/subscribe")
 def subscribe(email: str, _uid: str = Depends(get_authenticated_uid)):
-    """
-    """
+    now = time.time()
+    window_start = now - _SUBSCRIBE_WINDOW
+    attempts = [t for t in _subscribe_attempts.get(_uid, []) if t > window_start]
+    if len(attempts) >= _SUBSCRIBE_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many subscription attempts. Try again later.")
+    attempts.append(now)
+    _subscribe_attempts[_uid] = attempts
+
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Invalid email address.")
-
-    db = firestore.client()
 
     subs_ref = db.collection("subscriptions").document(email)
     subs_ref.set({
