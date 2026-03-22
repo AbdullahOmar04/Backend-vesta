@@ -3,13 +3,14 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import time
 import uuid
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware  # ADD THIS
 import jwt
 import requests
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import auth, credentials, firestore
 import os
 import json
 import uvicorn
@@ -61,8 +62,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_bearer = HTTPBearer()
+
+def get_authenticated_uid(credentials: HTTPAuthorizationCredentials = Depends(_bearer)) -> str:
+    try:
+        decoded = auth.verify_id_token(credentials.credentials)
+        return decoded["uid"]
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired Firebase token")
+
+
 @app.get("/")
-def root():
+def root(_uid: str = Depends(get_authenticated_uid)):
     return {"message": "✅ Vesta backend is live and running 🚀"}
 
 
@@ -74,7 +85,7 @@ SOSP_BASE_URL = "https://jpcjofsdev.apigw-az-eu.webmethods.io/gateway/Standing%2
 
 # --- Sync Accounts Endpoint ---
 @app.get("/sync_accounts/{uid}/{customer_id}")
-def sync_accounts(uid: str, customer_id: str):
+def sync_accounts(uid: str, customer_id: str, _uid: str = Depends(get_authenticated_uid)):
     url = f"{ACC_BASE_URL}/accounts"
     headers = {"x-customer-id": customer_id}
 
@@ -164,7 +175,7 @@ def sync_accounts(uid: str, customer_id: str):
 
 
 @app.get("/get_transactions/{uid}/{account_id}")
-def get_transactions(uid: str, account_id: str):
+def get_transactions(uid: str, account_id: str, _uid: str = Depends(get_authenticated_uid)):
     """
     Fetch transactions for an account and store them in Firestore under:
     users/{uid}/accounts/{account_id}/transactions/{transactionId}
@@ -277,7 +288,7 @@ def get_transactions(uid: str, account_id: str):
         )
 
 @app.get("/get_sosps/{uid}/{account_id}") 
-def get_sosps(uid: str, account_id: str):
+def get_sosps(uid: str, account_id: str, _uid: str = Depends(get_authenticated_uid)):
     url = f"{SOSP_BASE_URL}/accounts/{account_id}/SOSPs"
 
     try:
@@ -309,7 +320,7 @@ def get_sosps(uid: str, account_id: str):
 #########################################################################################################################
 
 @app.get("/subscribe")
-def subscribe(email: str):
+def subscribe(email: str, _uid: str = Depends(get_authenticated_uid)):
     """
     """
     if not email or "@" not in email:
@@ -605,7 +616,7 @@ def _comply_headers_psu(psu_access_token: str) -> dict:
 # ----------------------------
 
 @app.get("/banks/ahli/start_link/{uid}")
-def ahli_start_link(uid: str):
+def ahli_start_link(uid: str, _uid: str = Depends(get_authenticated_uid)):
     """
     1) Get TPP token (client_credentials)
     2) Create consent
@@ -834,7 +845,7 @@ def _ahli_sync_accounts_internal(uid: str) -> dict:
 
 
 @app.get("/banks/ahli/sync_accounts/{uid}")
-def ahli_sync_accounts(uid: str):
+def ahli_sync_accounts(uid: str, _uid: str = Depends(get_authenticated_uid)):
     """
     Call after the callback (or manually) to refresh accounts from Ahli via Comply.
     """
@@ -843,7 +854,7 @@ def ahli_sync_accounts(uid: str):
 
 
 @app.get("/banks/ahli/get_account/{uid}/{account_id}")
-def ahli_get_account(uid: str, account_id: str):
+def ahli_get_account(uid: str, account_id: str, _uid: str = Depends(get_authenticated_uid)):
     """
     Fetch a single account by id from Comply.
     GET {{comply-host}}/api/public/jo/v0.4/accounts/{accountId}
@@ -860,7 +871,7 @@ def ahli_get_account(uid: str, account_id: str):
 
 
 @app.get("/banks/ahli/get_balances/{uid}/{account_id}")
-def ahli_get_balances(uid: str, account_id: str):
+def ahli_get_balances(uid: str, account_id: str, _uid: str = Depends(get_authenticated_uid)):
     """
     Fetch all balances of an account from Comply.
     GET {{comply-host}}/api/public/jo/v0.4/accounts/{accountId}/balances
@@ -876,7 +887,7 @@ def ahli_get_balances(uid: str, account_id: str):
 
 
 @app.get("/banks/ahli/get_transactions/{uid}/{account_id}")
-def ahli_get_transactions(uid: str, account_id: str):
+def ahli_get_transactions(uid: str, account_id: str, _uid: str = Depends(get_authenticated_uid)):
     """
     Fetch transactions for one account and store:
       users/{uid}/accounts/{account_id}/transactions/{transactionId}
@@ -1183,7 +1194,7 @@ def _cboj_ensure_psu_token(uid: str) -> str:
 # ----------------------------
 
 @app.get("/banks/capital/start_link/{uid}")
-def capital_start_link(uid: str):
+def capital_start_link(uid: str, _uid: str = Depends(get_authenticated_uid)):
     """
     1) Get TPP token (client_credentials)
     2) Create consent with CBOJ-spec permissions
@@ -1433,14 +1444,14 @@ def _cboj_sync_accounts_internal(uid: str) -> dict:
 
 
 @app.get("/banks/capital/sync_accounts/{uid}")
-def capital_sync_accounts(uid: str):
+def capital_sync_accounts(uid: str, _uid: str = Depends(get_authenticated_uid)):
     # Refresh accounts from Capital Bank
     out = _cboj_sync_accounts_internal(uid)
     return {"status": "success", **out}
 
 
 @app.get("/banks/capital/get_account/{uid}/{account_id}")
-def capital_get_account(uid: str, account_id: str):
+def capital_get_account(uid: str, account_id: str, _uid: str = Depends(get_authenticated_uid)):
     # GET /accounts/{accountId}
     psu_token = _cboj_ensure_psu_token(uid)
     headers = _cboj_headers_psu(psu_token)
@@ -1452,7 +1463,7 @@ def capital_get_account(uid: str, account_id: str):
 
 
 @app.get("/banks/capital/get_account_by_iban/{uid}/{iban}")
-def capital_get_account_by_iban(uid: str, iban: str):
+def capital_get_account_by_iban(uid: str, iban: str, _uid: str = Depends(get_authenticated_uid)):
     # GET /accounts/address/{accountAddress}?accountSchema=IBAN
     psu_token = _cboj_ensure_psu_token(uid)
     headers = _cboj_headers_psu(psu_token)
@@ -1464,7 +1475,7 @@ def capital_get_account_by_iban(uid: str, iban: str):
 
 
 @app.get("/banks/capital/get_balances/{uid}/{account_id}")
-def capital_get_balances(uid: str, account_id: str):
+def capital_get_balances(uid: str, account_id: str, _uid: str = Depends(get_authenticated_uid)):
     # GET /accounts/{accountId}/balances
     psu_token = _cboj_ensure_psu_token(uid)
     headers = _cboj_headers_psu(psu_token)
@@ -1476,7 +1487,7 @@ def capital_get_balances(uid: str, account_id: str):
 
 
 @app.get("/banks/capital/get_transactions/{uid}/{account_id}")
-def capital_get_transactions(uid: str, account_id: str):
+def capital_get_transactions(uid: str, account_id: str, _uid: str = Depends(get_authenticated_uid)):
     
     #Fetch transactions from CBOJ and store in Firestore.
     #CBOJ schema: amount={amount,currency}, transactionDirection=credit/debit.
@@ -1557,7 +1568,7 @@ def capital_get_transactions(uid: str, account_id: str):
 
 
 @app.get("/banks/capital/get_transaction/{uid}/{account_id}/{transaction_id}")
-def capital_get_transaction(uid: str, account_id: str, transaction_id: str):
+def capital_get_transaction(uid: str, account_id: str, transaction_id: str, _uid: str = Depends(get_authenticated_uid)):
     #GET /accounts/{accountId}/transactions/{transactionId
     psu_token = _cboj_ensure_psu_token(uid)
     headers = _cboj_headers_psu(psu_token)
@@ -1569,7 +1580,7 @@ def capital_get_transaction(uid: str, account_id: str, transaction_id: str):
 
 
 @app.get("/banks/capital/get_beneficiaries/{uid}")
-def capital_get_beneficiaries(uid: str):
+def capital_get_beneficiaries(uid: str, _uid: str = Depends(get_authenticated_uid)):
     #GET /beneficiaries
     psu_token = _cboj_ensure_psu_token(uid)
     headers = _cboj_headers_psu(psu_token)
@@ -1581,7 +1592,7 @@ def capital_get_beneficiaries(uid: str):
 
 
 @app.get("/banks/capital/get_beneficiary/{uid}/{beneficiary_id}")
-def capital_get_beneficiary(uid: str, beneficiary_id: str):
+def capital_get_beneficiary(uid: str, beneficiary_id: str, _uid: str = Depends(get_authenticated_uid)):
     #]GET /beneficiaries/{beneficiaryId 
     psu_token = _cboj_ensure_psu_token(uid)
     headers = _cboj_headers_psu(psu_token)
@@ -1593,7 +1604,7 @@ def capital_get_beneficiary(uid: str, beneficiary_id: str):
 
 
 @app.get("/banks/capital/get_sosps/{uid}/{account_id}")
-def capital_get_sosps(uid: str, account_id: str):
+def capital_get_sosps(uid: str, account_id: str, _uid: str = Depends(get_authenticated_uid)):
      #GET /accounts/{accountId}/sosp - Standing Orders & Scheduled Payments
     psu_token = _cboj_ensure_psu_token(uid)
     headers = _cboj_headers_psu(psu_token)
@@ -1605,7 +1616,7 @@ def capital_get_sosps(uid: str, account_id: str):
 
 
 @app.get("/banks/capital/get_sosp/{uid}/{account_id}/{sosp_id}")
-def capital_get_sosp(uid: str, account_id: str, sosp_id: str):
+def capital_get_sosp(uid: str, account_id: str, sosp_id: str, _uid: str = Depends(get_authenticated_uid)):
     #GET /accounts/{accountId}/sosp/{sospId 
     psu_token = _cboj_ensure_psu_token(uid)
     headers = _cboj_headers_psu(psu_token)
@@ -1617,7 +1628,7 @@ def capital_get_sosp(uid: str, account_id: str, sosp_id: str):
 
 
 @app.get("/banks/capital/get_consent/{uid}")
-def capital_get_consent(uid: str):
+def capital_get_consent(uid: str, _uid: str = Depends(get_authenticated_uid)):
     #GET /account-access-consents/{consentRef} - Check consent status
     st = _cboj_read_provider_state(uid)
     consent_ref = st.get("consentRef")
@@ -1639,7 +1650,7 @@ def capital_get_consent(uid: str):
 
 
 @app.delete("/banks/capital/revoke_consent/{uid}")
-def capital_revoke_consent(uid: str):
+def capital_revoke_consent(uid: str, _uid: str = Depends(get_authenticated_uid)):
     #DELETE /account-access-consents/{consentRef} - Revoke consent
     st = _cboj_read_provider_state(uid)
     consent_ref = st.get("consentRef")
