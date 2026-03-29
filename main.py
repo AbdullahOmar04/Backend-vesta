@@ -1703,6 +1703,10 @@ ETIHAD_CLIENT_SECRET = os.getenv("ETIHAD_CLIENT_SECRET", "")
 ETIHAD_IDENTITY_BASE = os.getenv("ETIHAD_IDENTITY_BASE", "https://api.developer.bankaletihad.com/api/v1/tppa").rstrip("/")
 ETIHAD_ACCOUNTS_BASE = os.getenv("ETIHAD_ACCOUNTS_BASE", "https://api.developer.bankaletihad.com/api/v1/partner/accounts").rstrip("/")
 
+ETIHAD_CERT_FILE = os.getenv("ETIHAD_CERT_FILE", "signedCert__314.crt")
+ETIHAD_KEY_FILE = os.getenv("ETIHAD_KEY_FILE", "server.key")
+ETIHAD_MTLS = (ETIHAD_CERT_FILE, ETIHAD_KEY_FILE)
+
 ETIHAD_PROVIDER_KEY = "etihad"
 ETIHAD_PROVIDER_LABEL = "Etihad"
 ETIHAD_SANDBOX = "bankaletihad"
@@ -1730,16 +1734,22 @@ def _etihad_tpp_token() -> dict:
     """Get TPP-level access token via client_credentials grant."""
     _etihad_require_env()
     url = f"{ETIHAD_IDENTITY_BASE}/token"
+    
     headers = {
         "Authorization": _etihad_basic_auth_header(),
         "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Vesta-Backend/1.0"
     }
     data = {
         "grant_type": "client_credentials",
-        "client_id": ETIHAD_CLIENT_ID,
         "scope": "accounts",
     }
-    r = requests.post(url, headers=headers, data=data, timeout=20)
+    
+    # Add cert=ETIHAD_MTLS
+    r = requests.post(url, headers=headers, data=data, cert=ETIHAD_MTLS, timeout=20)
+    
+    if r.status_code >= 400:
+        print(f"TPP TOKEN FAIL: {r.status_code} - {r.text}")
     r.raise_for_status()
     return r.json()
 
@@ -1757,7 +1767,7 @@ def _etihad_login_init(*, username: str, password: str, tpp_access_token: str) -
         "Password": password,
         "Scope": "accounts",
     }
-    r = requests.post(url, headers=headers, json=payload, timeout=20)
+    r = requests.post(url, headers=headers, json=payload,cert=ETIHAD_MTLS ,timeout=20)
     if r.status_code == 202:
         return {"status": "otp_sent"}
     if r.status_code == 200:
@@ -1779,7 +1789,7 @@ def _etihad_login_complete(*, username: str, password: str, otp_code: str, tpp_a
         "Scope": "accounts",
         "Code": otp_code,
     }
-    r = requests.post(url, headers=headers, json=payload, timeout=20)
+    r = requests.post(url, headers=headers, json=payload, cert=ETIHAD_MTLS, timeout=20)
     if r.status_code >= 400:
         raise HTTPException(status_code=r.status_code, detail=f"Login complete failed: {r.text[:500]}")
     return r.json()
@@ -1798,7 +1808,7 @@ def _etihad_refresh_token(*, refresh_token: str) -> dict:
         "client_id": ETIHAD_CLIENT_ID,
         "refresh_token": refresh_token,
     }
-    r = requests.post(url, headers=headers, data=data, timeout=20)
+    r = requests.post(url, headers=headers, data=data, cert=ETIHAD_MTLS, timeout=20)
     r.raise_for_status()
     return r.json()
 
@@ -2004,7 +2014,7 @@ def etihad_get_customers(uid: str, _uid: str = Depends(get_authenticated_uid)):
     headers = _etihad_headers(access_token)
 
     url = f"{ETIHAD_ACCOUNTS_BASE}/customers"
-    r = requests.get(url, headers=headers, timeout=25)
+    r = requests.get(url, headers=headers, cert=ETIHAD_MTLS, timeout=25)
     if r.status_code >= 400:
         raise HTTPException(status_code=r.status_code, detail=f"Get customers failed: {r.text[:500]}")
     return {"status": "success", "data": r.json()}
@@ -2017,7 +2027,7 @@ def etihad_get_accounts(uid: str, customer_id: str, _uid: str = Depends(get_auth
     headers = _etihad_headers(access_token)
 
     url = f"{ETIHAD_ACCOUNTS_BASE}/customers/{customer_id}/accounts"
-    r = requests.get(url, headers=headers, timeout=25)
+    r = requests.get(url, headers=headers, cert=ETIHAD_MTLS, timeout=25)
     if r.status_code >= 400:
         raise HTTPException(status_code=r.status_code, detail=f"Get accounts failed: {r.text[:500]}")
     return {"status": "success", "data": r.json()}
@@ -2030,7 +2040,7 @@ def etihad_get_account(uid: str, customer_id: str, account_number: str, _uid: st
     headers = _etihad_headers(access_token)
 
     url = f"{ETIHAD_ACCOUNTS_BASE}/customers/{customer_id}/accounts/{account_number}"
-    r = requests.get(url, headers=headers, timeout=25)
+    r = requests.get(url, headers=headers, cert=ETIHAD_MTLS, timeout=25)
     if r.status_code >= 400:
         raise HTTPException(status_code=r.status_code, detail=f"Get account failed: {r.text[:500]}")
     return {"status": "success", "data": r.json()}
@@ -2054,7 +2064,7 @@ def etihad_get_transactions(
     if date_to:
         params["dateTo"] = date_to
 
-    r = requests.get(url, headers=headers, params=params, timeout=25)
+    r = requests.get(url, headers=headers, params=params, cert=ETIHAD_MTLS, timeout=25)
     if r.status_code >= 400:
         raise HTTPException(status_code=r.status_code, detail=f"Get transactions failed: {r.text[:500]}")
     return {"status": "success", "data": r.json()}
@@ -2082,7 +2092,7 @@ def etihad_get_exchange_rate(
     if customer_account:
         params["customerAccount"] = customer_account
 
-    r = requests.get(url, headers=headers, params=params, timeout=25)
+    r = requests.get(url, headers=headers, params=params, cert=ETIHAD_MTLS, timeout=25)
     if r.status_code >= 400:
         raise HTTPException(status_code=r.status_code, detail=f"Get exchange rate failed: {r.text[:500]}")
     return {"status": "success", "data": r.json()}
@@ -2097,7 +2107,7 @@ def etihad_sync_accounts(uid: str, customer_id: str, _uid: str = Depends(get_aut
     headers = _etihad_headers(access_token)
 
     url = f"{ETIHAD_ACCOUNTS_BASE}/customers/{customer_id}/accounts"
-    r = requests.get(url, headers=headers, timeout=25)
+    r = requests.get(url, headers=headers, cert=ETIHAD_MTLS, timeout=25)
     if r.status_code >= 400:
         raise HTTPException(status_code=r.status_code, detail=f"Get accounts failed: {r.text[:500]}")
 
@@ -2168,7 +2178,7 @@ def etihad_sync_transactions(
         if date_to:
             params["dateTo"] = date_to
 
-        r = requests.get(url, headers=headers, params=params, timeout=25)
+        r = requests.get(url, headers=headers, params=params, cert=ETIHAD_MTLS, timeout=25)
         if r.status_code >= 400:
             if page == 1:
                 raise HTTPException(status_code=r.status_code, detail=f"Get transactions failed: {r.text[:500]}")
@@ -2238,7 +2248,7 @@ def etihad_logout(uid: str, _uid: str = Depends(get_authenticated_uid)):
         try:
             url = f"{ETIHAD_IDENTITY_BASE}/token"
             headers = {"Authorization": f"Bearer {access_token}"}
-            requests.delete(url, headers=headers, timeout=10)
+            requests.delete(url, headers=headers, cert=ETIHAD_MTLS, timeout=10)
         except Exception:
             pass  # Best effort
 
