@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware  # ADD THIS
+from pydantic import BaseModel
 import jwt
 import requests
 import firebase_admin
@@ -1688,6 +1689,567 @@ def capital_revoke_consent(uid: str, _uid: str = Depends(get_authenticated_uid))
     })
 
     return {"status": "success", "message": "Consent revoked"}
+
+
+####################################################  ETIHAD BANK (Bank Al Etihad — Finto platform)  ####################################################
+# Etihad uses a completely different architecture from CBOJ/Ahli:
+#   - Direct login flow (username + password + OTP), NO browser redirect
+#   - Identity API: /token, /token2FA/otp, /token2FA
+#   - Accounts API: /customers, /customers/{id}/accounts, /customers/{id}/accounts/{num}/transactions
+#   - Basic Auth for /token endpoint, Bearer JWT for everything else
+
+ETIHAD_CLIENT_ID = os.getenv("ETIHAD_CLIENT_ID", "")
+ETIHAD_CLIENT_SECRET = os.getenv("ETIHAD_CLIENT_SECRET", "")
+ETIHAD_IDENTITY_BASE = os.getenv("ETIHAD_IDENTITY_BASE", "https://api.developer.bankaletihad.com/api/v1/tppa").rstrip("/")
+ETIHAD_ACCOUNTS_BASE = os.getenv("ETIHAD_ACCOUNTS_BASE", "https://api.developer.bankaletihad.com/api/v1/partner/accounts").rstrip("/")
+
+ETIHAD_PROVIDER_KEY = "etihad"
+ETIHAD_PROVIDER_LABEL = "Etihad"
+ETIHAD_SANDBOX = "bankaletihad"
+
+
+# ----------------------------
+# Etihad Helpers
+# ----------------------------
+def _etihad_require_env() -> None:
+    missing = []
+    if not ETIHAD_CLIENT_ID: missing.append("ETIHAD_CLIENT_ID")
+    if not ETIHAD_CLIENT_SECRET: missing.append("ETIHAD_CLIENT_SECRET")
+    if missing:
+        raise HTTPException(status_code=500, detail=f"Missing env vars: {', '.join(missing)}")
+
+
+def _etihad_basic_auth_header() -> str:
+    """Basic Auth header value for /token endpoint: base64(client_id:client_secret)."""
+    creds = f"{ETIHAD_CLIENT_ID}:{ETIHAD_CLIENT_SECRET}"
+    encoded = base64.b64encode(creds.encode()).decode()
+    return f"Basic {encoded}"
+
+
+def _etihad_tpp_token() -> dict:
+    """Get TPP-level access token via client_credentials grant."""
+    _etihad_require_env()
+    url = f"{ETIHAD_IDENTITY_BASE}/token"
+    headers = {
+        "Authorization": _etihad_basic_auth_header(),
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+    data = {
+        "grant_type": "client_credentials",
+        "client_id": ETIHAD_CLIENT_ID,
+        "scope": "accounts",
+    }
+    r = requests.post(url, headers=headers, data=data, timeout=20)
+    r.raise_for_status()
+    return r.json()
+
+
+def _etihad_login_init(*, username: str, password: str, tpp_access_token: str) -> dict:
+    """POST /token2FA/otp — triggers OTP to user's phone.
+    Returns 200 (token if no 2FA configured) or 202 (OTP sent)."""
+    url = f"{ETIHAD_IDENTITY_BASE}/token2FA/otp"
+    headers = {
+        "Authorization": f"Bearer {tpp_access_token}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "Username": username,
+        "Password": password,
+        "Scope": "accounts",
+    }
+    r = requests.post(url, headers=headers, json=payload, timeout=20)
+    if r.status_code == 202:
+        return {"status": "otp_sent"}
+    if r.status_code == 200:
+        return {"status": "authenticated", "tokens": r.json()}
+    # Error
+    raise HTTPException(status_code=r.status_code, detail=f"Login init failed: {r.text[:500]}")
+
+
+def _etihad_login_complete(*, username: str, password: str, otp_code: str, tpp_access_token: str) -> dict:
+    """POST /token2FA — complete 2FA with OTP code, returns access_token."""
+    url = f"{ETIHAD_IDENTITY_BASE}/token2FA"
+    headers = {
+        "Authorization": f"Bearer {tpp_access_token}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "Username": username,
+        "Password": password,
+        "Scope": "accounts",
+        "Code": otp_code,
+    }
+    r = requests.post(url, headers=headers, json=payload, timeout=20)
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"Login complete failed: {r.text[:500]}")
+    return r.json()
+
+
+def _etihad_refresh_token(*, refresh_token: str) -> dict:
+    """Refresh an expired user access token."""
+    _etihad_require_env()
+    url = f"{ETIHAD_IDENTITY_BASE}/token"
+    headers = {
+        "Authorization": _etihad_basic_auth_header(),
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+    data = {
+        "grant_type": "refresh_token",
+        "client_id": ETIHAD_CLIENT_ID,
+        "refresh_token": refresh_token,
+    }
+    r = requests.post(url, headers=headers, data=data, timeout=20)
+    r.raise_for_status()
+    return r.json()
+
+
+def _etihad_headers(access_token: str) -> dict:
+    """Bearer headers for Etihad data APIs."""
+    return {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/json",
+    }
+
+
+# --- Firestore helpers ---
+def _etihad_providers_ref(uid: str):
+    return db.collection("users").document(uid)
+
+
+def _etihad_write_provider_state(uid: str, data: dict):
+    _etihad_providers_ref(uid).set(
+        {"providers": {ETIHAD_PROVIDER_KEY: data}},
+        merge=True,
+    )
+
+
+def _etihad_read_provider_state(uid: str) -> dict:
+    snap = _etihad_providers_ref(uid).get()
+    d = snap.to_dict() or {}
+    return ((d.get("providers") or {}).get(ETIHAD_PROVIDER_KEY) or {})
+
+
+def _etihad_ensure_token(uid: str) -> str:
+    """Load stored user token for Etihad; refresh if expired."""
+    st = _etihad_read_provider_state(uid)
+    tokens = st.get("tokens") or {}
+    access_token = tokens.get("access_token")
+    refresh_tok = tokens.get("refresh_token")
+    expires_at = tokens.get("expires_at")
+
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Etihad Bank not linked yet. Login first.")
+
+    if not expires_at:
+        return access_token
+
+    try:
+        exp = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+    except Exception:
+        return access_token
+
+    if exp <= (_utc_now() + timedelta(seconds=60)) and refresh_tok:
+        newt = _etihad_refresh_token(refresh_token=refresh_tok)
+
+        new_access = newt.get("access_token", access_token)
+        new_refresh = newt.get("refresh_token", refresh_tok)
+        ttl = int(newt.get("expires_in") or 0)
+        new_exp = _utc_now() + timedelta(seconds=max(ttl, 0))
+
+        _etihad_write_provider_state(uid, {
+            "sandbox": ETIHAD_SANDBOX,
+            "linked": True,
+            "tokens": {
+                "access_token": new_access,
+                "refresh_token": new_refresh,
+                "expires_at": _iso(new_exp),
+                "updatedAt": firestore.SERVER_TIMESTAMP,
+            }
+        })
+        return new_access
+
+    return access_token
+
+
+# ----------------------------
+# Etihad ENDPOINTS
+# ----------------------------
+
+class EtihadLoginInitBody(BaseModel):
+    username: str
+    password: str
+
+class EtihadLoginCompleteBody(BaseModel):
+    otp: str
+    username: str | None = None
+    password: str | None = None
+
+
+@app.post("/banks/etihad/login_init/{uid}")
+def etihad_login_init(uid: str, body: EtihadLoginInitBody, _uid: str = Depends(get_authenticated_uid)):
+    """Step 1: Send username + password → triggers OTP to user's phone."""
+    _etihad_require_env()
+
+    username = body.username.strip()
+    password = body.password.strip()
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="username and password are required")
+
+    try:
+        tpp = _etihad_tpp_token()
+    except requests.exceptions.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"TPP token failed: {e.response.status_code} {e.response.text[:500]}")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"TPP token error ({type(e).__name__}): {e}")
+
+    tpp_access = tpp.get("access_token", "")
+    if not tpp_access:
+        raise HTTPException(status_code=500, detail=f"No access_token in TPP response: {tpp}")
+
+    result = _etihad_login_init(username=username, password=password, tpp_access_token=tpp_access)
+
+    # Store TPP token + credentials temporarily for login_complete
+    _etihad_write_provider_state(uid, {
+        "provider": ETIHAD_PROVIDER_LABEL,
+        "sandbox": ETIHAD_SANDBOX,
+        "tpp_access_token": tpp_access,
+        "pending_username": username,
+        "pending_password": password,
+        "status": result.get("status"),
+        "updatedAt": firestore.SERVER_TIMESTAMP,
+    })
+
+    # If no 2FA, user is directly authenticated
+    if result.get("status") == "authenticated":
+        tok = result["tokens"]
+        ttl = int(tok.get("expires_in") or 0)
+        exp = _utc_now() + timedelta(seconds=max(ttl, 0))
+        _etihad_write_provider_state(uid, {
+            "provider": ETIHAD_PROVIDER_LABEL,
+            "sandbox": ETIHAD_SANDBOX,
+            "linked": True,
+            "tokens": {
+                "access_token": tok.get("access_token"),
+                "refresh_token": tok.get("refresh_token"),
+                "expires_at": _iso(exp),
+            },
+            "status": "authenticated",
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        })
+        return {"status": "authenticated", "message": "Logged in directly (no 2FA required)"}
+
+    return {"status": "otp_sent", "message": "OTP sent to your phone. Call login_complete with the OTP code."}
+
+
+@app.post("/banks/etihad/login_complete/{uid}")
+def etihad_login_complete(uid: str, body: EtihadLoginCompleteBody, _uid: str = Depends(get_authenticated_uid)):
+    """Step 2: Verify OTP and get access token.
+    Body: {"otp": "123456"} — username/password are retrieved from stored state.
+    Optionally: {"username": "...", "password": "...", "otp": "123456"}
+    """
+    _etihad_require_env()
+
+    otp_code = body.otp.strip()
+    if not otp_code:
+        raise HTTPException(status_code=400, detail="otp is required")
+
+    st = _etihad_read_provider_state(uid)
+
+    # Use stored credentials or body overrides
+    username = ((body.username or "").strip() or st.get("pending_username") or "").strip()
+    password = ((body.password or "").strip() or st.get("pending_password") or "").strip()
+    tpp_access = st.get("tpp_access_token", "")
+
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="No pending credentials found. Call login_init first.")
+    if not tpp_access:
+        # Get a fresh TPP token
+        try:
+            tpp = _etihad_tpp_token()
+            tpp_access = tpp.get("access_token", "")
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"TPP token error: {e}")
+
+    tok = _etihad_login_complete(
+        username=username, password=password,
+        otp_code=otp_code, tpp_access_token=tpp_access,
+    )
+
+    ttl = int(tok.get("expires_in") or 0)
+    exp = _utc_now() + timedelta(seconds=max(ttl, 0))
+
+    _etihad_write_provider_state(uid, {
+        "provider": ETIHAD_PROVIDER_LABEL,
+        "sandbox": ETIHAD_SANDBOX,
+        "linked": True,
+        "tokens": {
+            "access_token": tok.get("access_token"),
+            "refresh_token": tok.get("refresh_token"),
+            "expires_at": _iso(exp),
+        },
+        "status": "authenticated",
+        "pending_username": None,
+        "pending_password": None,
+        "tpp_access_token": None,
+        "updatedAt": firestore.SERVER_TIMESTAMP,
+    })
+
+    return {"status": "success", "message": "Etihad Bank linked successfully"}
+
+
+@app.get("/banks/etihad/get_customers/{uid}")
+def etihad_get_customers(uid: str, _uid: str = Depends(get_authenticated_uid)):
+    """GET /customers — list all customers with accounts."""
+    access_token = _etihad_ensure_token(uid)
+    headers = _etihad_headers(access_token)
+
+    url = f"{ETIHAD_ACCOUNTS_BASE}/customers"
+    r = requests.get(url, headers=headers, timeout=25)
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"Get customers failed: {r.text[:500]}")
+    return {"status": "success", "data": r.json()}
+
+
+@app.get("/banks/etihad/get_accounts/{uid}/{customer_id}")
+def etihad_get_accounts(uid: str, customer_id: str, _uid: str = Depends(get_authenticated_uid)):
+    """GET /customers/{customerId}/accounts — list all accounts for a customer."""
+    access_token = _etihad_ensure_token(uid)
+    headers = _etihad_headers(access_token)
+
+    url = f"{ETIHAD_ACCOUNTS_BASE}/customers/{customer_id}/accounts"
+    r = requests.get(url, headers=headers, timeout=25)
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"Get accounts failed: {r.text[:500]}")
+    return {"status": "success", "data": r.json()}
+
+
+@app.get("/banks/etihad/get_account/{uid}/{customer_id}/{account_number}")
+def etihad_get_account(uid: str, customer_id: str, account_number: str, _uid: str = Depends(get_authenticated_uid)):
+    """GET /customers/{customerId}/accounts/{accountNumber} — single account details."""
+    access_token = _etihad_ensure_token(uid)
+    headers = _etihad_headers(access_token)
+
+    url = f"{ETIHAD_ACCOUNTS_BASE}/customers/{customer_id}/accounts/{account_number}"
+    r = requests.get(url, headers=headers, timeout=25)
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"Get account failed: {r.text[:500]}")
+    return {"status": "success", "data": r.json()}
+
+
+@app.get("/banks/etihad/get_transactions/{uid}/{customer_id}/{account_number}")
+def etihad_get_transactions(
+    uid: str, customer_id: str, account_number: str,
+    date_from: str | None = None, date_to: str | None = None,
+    page_number: int = 1, page_size: int = 50,
+    _uid: str = Depends(get_authenticated_uid),
+):
+    """GET /customers/{customerId}/accounts/{accountNumber}/transactions"""
+    access_token = _etihad_ensure_token(uid)
+    headers = _etihad_headers(access_token)
+
+    url = f"{ETIHAD_ACCOUNTS_BASE}/customers/{customer_id}/accounts/{account_number}/transactions"
+    params: dict = {"pageNumber": page_number, "pageSize": page_size}
+    if date_from:
+        params["dateFrom"] = date_from
+    if date_to:
+        params["dateTo"] = date_to
+
+    r = requests.get(url, headers=headers, params=params, timeout=25)
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"Get transactions failed: {r.text[:500]}")
+    return {"status": "success", "data": r.json()}
+
+
+@app.get("/banks/etihad/get_exchange_rate/{uid}/{customer_id}")
+def etihad_get_exchange_rate(
+    uid: str, customer_id: str,
+    from_currency: str = "USD", to_currency: str = "JOD",
+    amount: str = "1", type: str = "CREDIT",
+    customer_account: str | None = None,
+    _uid: str = Depends(get_authenticated_uid),
+):
+    """GET /customers/{customerId}/payments/exchangeRates"""
+    access_token = _etihad_ensure_token(uid)
+    headers = _etihad_headers(access_token)
+
+    url = f"{ETIHAD_ACCOUNTS_BASE}/customers/{customer_id}/payments/exchangeRates"
+    params: dict = {
+        "fromCurrencyCode": from_currency,
+        "toCurrencyCode": to_currency,
+        "fromCurrencyAmount": amount,
+        "type": type,
+    }
+    if customer_account:
+        params["customerAccount"] = customer_account
+
+    r = requests.get(url, headers=headers, params=params, timeout=25)
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"Get exchange rate failed: {r.text[:500]}")
+    return {"status": "success", "data": r.json()}
+
+
+# --- Sync endpoints ---
+
+@app.post("/banks/etihad/sync_accounts/{uid}/{customer_id}")
+def etihad_sync_accounts(uid: str, customer_id: str, _uid: str = Depends(get_authenticated_uid)):
+    """Fetch all accounts for a customer and sync to Firestore."""
+    access_token = _etihad_ensure_token(uid)
+    headers = _etihad_headers(access_token)
+
+    url = f"{ETIHAD_ACCOUNTS_BASE}/customers/{customer_id}/accounts"
+    r = requests.get(url, headers=headers, timeout=25)
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"Get accounts failed: {r.text[:500]}")
+
+    accounts = r.json()
+    if not isinstance(accounts, list):
+        accounts = [accounts] if accounts else []
+
+    batch = db.batch()
+    acct_ref = db.collection("users").document(uid).collection("accounts")
+    count = 0
+
+    for acct in accounts:
+        acct_number = acct.get("Number") or acct.get("IBAN") or str(uuid.uuid4())
+        acct_id = f"etihad_{acct_number}"
+
+        doc_data = {
+            "accountId": acct_id,
+            "accountNumber": acct.get("Number"),
+            "iban": acct.get("IBAN"),
+            "swift": acct.get("SWIFT"),
+            "name": acct.get("Name"),
+            "bankName": acct.get("BankName"),
+            "branch": acct.get("Branch"),
+            "currency": acct.get("CurrencyCode"),
+            "currentBalance": acct.get("CurrentBalance"),
+            "availableBalance": acct.get("AvailableBalance"),
+            "blockedAmount": acct.get("BlockedAmount"),
+            "noDebit": acct.get("NoDebit"),
+            "noCredit": acct.get("NoCredit"),
+            "dormant": acct.get("Dormant"),
+            "customerName": (acct.get("Customer") or {}).get("Name"),
+            "customerId": customer_id,
+            "source": "openBanking",
+            "provider": ETIHAD_PROVIDER_LABEL,
+            "sandbox": ETIHAD_SANDBOX,
+            "raw": acct,
+            "syncedAt": firestore.SERVER_TIMESTAMP,
+        }
+
+        batch.set(acct_ref.document(acct_id), doc_data, merge=False)
+        count += 1
+
+    batch.commit()
+    return {"status": "success", "accounts_synced": count}
+
+
+@app.post("/banks/etihad/sync_transactions/{uid}/{customer_id}/{account_number}")
+def etihad_sync_transactions(
+    uid: str, customer_id: str, account_number: str,
+    date_from: str | None = None, date_to: str | None = None,
+    _uid: str = Depends(get_authenticated_uid),
+):
+    """Fetch transactions and sync to Firestore."""
+    access_token = _etihad_ensure_token(uid)
+    headers = _etihad_headers(access_token)
+
+    acct_id = f"etihad_{account_number}"
+
+    # Paginate through all transactions
+    all_transactions = []
+    page = 1
+    page_size = 100
+    while True:
+        url = f"{ETIHAD_ACCOUNTS_BASE}/customers/{customer_id}/accounts/{account_number}/transactions"
+        params: dict = {"pageNumber": page, "pageSize": page_size}
+        if date_from:
+            params["dateFrom"] = date_from
+        if date_to:
+            params["dateTo"] = date_to
+
+        r = requests.get(url, headers=headers, params=params, timeout=25)
+        if r.status_code >= 400:
+            if page == 1:
+                raise HTTPException(status_code=r.status_code, detail=f"Get transactions failed: {r.text[:500]}")
+            break
+
+        txns = r.json()
+        if not isinstance(txns, list):
+            txns = [txns] if txns else []
+
+        if not txns:
+            break
+
+        all_transactions.extend(txns)
+        if len(txns) < page_size:
+            break
+        page += 1
+
+    batch = db.batch()
+    tx_ref = db.collection("users").document(uid).collection("transactions")
+    count = 0
+
+    for tx in all_transactions:
+        # Build a stable ID from transaction fields
+        tx_date = tx.get("Date", "")
+        tx_amount = str(tx.get("TransactionAmount", ""))
+        tx_desc = tx.get("Description", "")
+        tx_indicator = tx.get("DebitCreditIndicator", "")
+        raw_id = f"{account_number}_{tx_date}_{tx_amount}_{tx_indicator}_{tx_desc}"
+        tx_id = hashlib.sha256(raw_id.encode()).hexdigest()[:20]
+
+        direction = "credit" if tx_indicator == "C" else "debit"
+        amount = tx.get("TransactionAmount", 0)
+        currency = tx.get("TransactionCurrency", "JOD")
+
+        doc_data = {
+            "accountId": acct_id,
+            "amount": amount,
+            "currency": currency,
+            "type": direction,
+            "date": tx.get("Date"),
+            "valueDate": tx.get("ValueDate"),
+            "description": tx_desc,
+            "source": "openBanking",
+            "category": None,
+            "provider": ETIHAD_PROVIDER_LABEL,
+            "sandbox": ETIHAD_SANDBOX,
+            "raw": tx,
+            "syncedAt": firestore.SERVER_TIMESTAMP,
+        }
+
+        batch.set(tx_ref.document(tx_id), doc_data, merge=False)
+        count += 1
+
+    batch.commit()
+    return {"status": "success", "transactions_synced": count}
+
+
+@app.delete("/banks/etihad/logout/{uid}")
+def etihad_logout(uid: str, _uid: str = Depends(get_authenticated_uid)):
+    """Logout user session and clear stored tokens."""
+    st = _etihad_read_provider_state(uid)
+    tokens = st.get("tokens") or {}
+    access_token = tokens.get("access_token")
+
+    # Call Etihad logout endpoint if we have a token
+    if access_token:
+        try:
+            url = f"{ETIHAD_IDENTITY_BASE}/token"
+            headers = {"Authorization": f"Bearer {access_token}"}
+            requests.delete(url, headers=headers, timeout=10)
+        except Exception:
+            pass  # Best effort
+
+    _etihad_write_provider_state(uid, {
+        "linked": False,
+        "tokens": None,
+        "status": "logged_out",
+        "updatedAt": firestore.SERVER_TIMESTAMP,
+    })
+
+    return {"status": "success", "message": "Logged out from Etihad Bank"}
 
 
 if __name__ == "__main__":
