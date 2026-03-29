@@ -2,3 +2,6 @@ serviceAccountKey.json
 .venv/
 __pycache__/
 .env
+cboj-ob-ais-exp-api.yaml
+etihad-bank-accounts-api.yaml
+etihad-bank-doc.yaml
