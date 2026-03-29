@@ -1,0 +1,2238 @@
+openapi: 3.0.1
+info:
+  title: Identity API
+  description: >
+    This API allows to partner's application to manage users and their identity
+  version: '1'
+servers:
+  - url: https://api.developer.bankaletihad.com/api/v1/tppa
+tags:
+  - name: authentication
+  - name: user-management
+  - name: other
+  - name: rsa
+
+paths:
+  /rsa/key:
+    get:
+      tags:
+        - rsa
+      description: The method returns RSA Public Key
+      operationId: Get-RSA-public-key
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/rsaPublicKey'
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+  /certificates/{clientId}:
+    get:
+      description: Retrieves the public certificate that can be used to validate access tokens
+      tags:
+        - authentication
+      operationId: get-certificate
+      parameters:
+        - name: clientId
+          in: path
+          required: true
+          description: Supply the unique client id of the application
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/certificates'
+              example:
+                keys:
+                  - kid: fmjWqMM_5PkqGZCd8eL2JTFhs_DiVZAAI9MGTCMDlhc
+                    kty: RSA
+                    alg: RS256
+                    use: sig
+                    'n': >-
+                      0x3dfHIo87eG0RUtcw_r5DRLww29b3-vP0t3gBfky51zO5hJ4Pg22gLkaYd6OIu-OyMQjknz6goYRn631FJehyI6-PRmEmPYufrVQIAfmeBMWcxrjG61NsKp8Kqhabww92AIUg-aiBwT5vX9jTe2kdLR2qVL2YmAVbReExIKZLWjl2_lkQvogZtPfHeubZwV3lFye3ycWj61j5ANd9Akxkv7MYBMzKPs5nSVvXoq_FbSqceQqUm1fMWvzJxs-kA9Z7YxaEg__GXYhTbe3OTiOo_xntVSadsi8Jqnb1kmbKa9Mg-P92tOhTyEU-FqSlOoEsDifV4tpKQFapEsPFkFXQ
+                    e: AQAB
+                    x5c:
+                      - >-
+                        MIICozCCAYsCBgGCY3VuszANBgkqhkiG9w0BAQsFADAVMRMwEQYDVQQDDAp0ZXN0cmVhbG0xMB4XDTIyMDgwMzExMjUxNloXDTMyMDgwMzExMjY1NlowFTETMBEGA1UEAwwKdGVzdHJlYWxtMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBANMd3XxyKPO3htEVLXMP6+Q0S8MNvW9/rz9Ld4AX5MudczuYSeD4NtoC5GmHejiLvjsjEI5J8+oKGEZ+t9RSXociOvj0ZhJj2Ln61UCAH5ngTFnMa4xutTbCqfCqoWm8MPdgCFIPmogcE+b1/Y03tpHS0dqlS9mJgFW0XhMSCmS1o5dv5ZEL6IGbT3x3rm2cFd5Rcnt8nFo+tY+QDXfQJMZL+zGATMyj7OZ0lb16KvxW0qnHkKlJtXzFr8ycbPpAPWe2MWhIP/xl2IU23tzk4jqP8Z7VUmnbIvCap29ZJmymvTIPj/drToU8hFPhakpTqBLA4n1eLaSkBWqRLDxZBV0CAwEAATANBgkqhkiG9w0BAQsFAAOCAQEAHHMssZnQxxXzhn/mOEcOXY/qvWpHektbD8vTPA5OTVLVRjwmIqQv1TRS6KdfQkOhwRJVkfk8Vn41BACDVP77sJbD6VxtQa9AMt4Ghk3o0m3gvSuvVg2xQTcIFRI5aiVUVWMA7QzBDylMFixDmjep4iWJ+ugGweUwqwor2xmUnTosqK9DodpY+xIipYikiDZFWZhbToWPw+UOpx8xXQN5cEiYz/fSrX+3XneK+SUCc4KGACqwKjL7GDBTdg3C66mgzjCvWqxk+vsX2+0gf3anWCHTSuK4WUT74BtCJTqV5QTYFkaEnM1+trAJuklbZxsTCMOudDMgBBNQCR0kqzZulA==
+                    x5t: d-LGIh5XMsZ48U7uKGiOlsBVhxc
+                    x5t#S256: w2zMdyEzSDNJHeCA4mI9RV_G9pYfrfEHrEFMoSeXqdk
+                  - kid: ybOz9u02PDq34r0LWxy8YuMINDeGzvVQ-t-KAhshjQk
+                    kty: RSA
+                    alg: RSA-OAEP
+                    use: enc
+                    'n': >-
+                      p3EXXgWxQXXhFfjgviyYuFmRzMwL5Kw0DNKMEGEvpQCKZkY070U1Twg5p5xKzJ8TeYbVFIyF8Jv0LxSJl35T97m5hFitkHe40QDGcoZlhwhYx118RgRz8XwBBadtjwi3dNUErjn63pphB3xUdxQpjZRtjqQEHe5zgWECJqEC7OHqRdEH6yU21_KPPC-P5KA05_X5v0Zudf0TtLy8PyCUFZeg2SGlLi2ggJVSch6zZt5PdbmkZmtJPfSOGEcdsUZKWANZGk-y7gaJa4Fgf27Ti_B1xrzOieTxDpOEdygdr16HC0bYMrqq9RZ4Z28cIabGX9RGOFatUMIGgjygLTf1zw
+                    e: AQAB
+                    x5c:
+                      - >-
+                        MIICozCCAYsCBgGCY3VvLjANBgkqhkiG9w0BAQsFADAVMRMwEQYDVQQDDAp0ZXN0cmVhbG0xMB4XDTIyMDgwMzExMjUxNloXDTMyMDgwMzExMjY1NlowFTETMBEGA1UEAwwKdGVzdHJlYWxtMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKdxF14FsUF14RX44L4smLhZkczMC+SsNAzSjBBhL6UAimZGNO9FNU8IOaecSsyfE3mG1RSMhfCb9C8UiZd+U/e5uYRYrZB3uNEAxnKGZYcIWMddfEYEc/F8AQWnbY8It3TVBK45+t6aYQd8VHcUKY2UbY6kBB3uc4FhAiahAuzh6kXRB+slNtfyjzwvj+SgNOf1+b9GbnX9E7S8vD8glBWXoNkhpS4toICVUnIes2beT3W5pGZrST30jhhHHbFGSlgDWRpPsu4GiWuBYH9u04vwdca8zonk8Q6ThHcoHa9ehwtG2DK6qvUWeGdvHCGmxl/URjhWrVDCBoI8oC039c8CAwEAATANBgkqhkiG9w0BAQsFAAOCAQEAUXJHpDbUEA7FjyWp0LK5rWOHjkZSBYkx5YiOrsUqND8G4T6V736PvCaE9wwz4wyWSwGjaO7TlVdh6Ove8j1GDWTDrpkpXaNaeyzUJ9r1lQwFHvsc0oCpAk5jzs9OWCC/YpxSNUQ6Je1RLU1NGuRpaOPw9ApzCZyCnN1Nh5wC1bO9oD83bN1qYb5fTlKO0tliDXluown50q7tG1TE4TigLeJt84uOI1ijcFdTkQnGUNzJ0iDatsnIg1SfT+1+54rkStXyNAp4ysl+Q5tcKuUIeYDjnvvrty6paS1R0GDTDPMNTQo+74U1oA9446fZwcwd5UsayHT7K1WcnO6Mma8wxg==
+                    x5t: n34-gzqZ0kKdr0t1RpRHXTbQXBo
+                    x5t#S256: TtxvYbxObSCAWOay7g8pmek5X4Jt897eUSyVAsj_i9A
+
+  /users:
+    get:
+      description: Retrieves a list of application users
+      tags:
+        - user-management
+      operationId: list-all-users
+      parameters:
+        - name: pageNumber
+          in: query
+          description: |
+            The number of page
+          schema:
+            minimum: 1
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          description: |
+            The number of items for page
+          schema:
+            minimum: 10
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/userWithId'
+              example:
+                Username: john_wick
+                Id: eb7b5883-760e-4457-8337-db8c8d9675f2
+                PhoneNumber: "+123456789012"
+                Email: john.wick@finto.io
+                LastName: Wick
+                FirstName: John
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+      security:
+        - bearerAuth: []
+    post:
+      description: Creates a new user of the application
+      tags:
+        - user-management
+      operationId: create-a-user
+      parameters:
+        - name: Idempotency-key
+          in: header
+          description: >
+            Expected value in UUID format. UUIDs are written in 5 groups of
+            hexadecimal digits separated by hyphens.
+
+
+            The unique value should be specified on each new request to API. If
+            you are uncertain about the execution result of the recently made
+            request, you may repeat the request with the same content and the
+            same idempotency key, it should give you the same response as it
+            should have been for the previous request, but without actual
+            request execution.
+
+
+            It can be useful if you did not get a response to your request at
+            all or received the timeout error.
+          required: true
+          schema:
+            maxLength: 36
+            pattern: >-
+              ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/userCreation'
+            example:
+              Email: john.wick@finto.io
+              Username: john_wick
+              Password: VERY_str0ng_p@ssword
+              FirstName: John
+              LastName: Wick
+              PhoneNumber: "+123456789012"
+
+      responses:
+        '201':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/userWithId'
+              example:
+                Username: john_wick
+                Id: eb7b5883-760e-4457-8337-db8c8d9675f2
+                PhoneNumber: "+123456789012"
+                Email: john.wick@finto.io
+                LastName: Wick
+                FirstName: John
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+      security:
+        - bearerAuth: []
+
+  /users/{userId}:
+    delete:
+      description: Close a user of the application
+      tags:
+        - user-management
+      operationId: close-user-record
+      parameters:
+        - name: userId
+          in: path
+          description: Id of the application user
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Successful operation
+          content: {}
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "404001"
+                Message: User not found
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+      security:
+        - bearerAuth: []
+
+  /users/password:
+    patch:
+      description: Sets password for a user
+      tags:
+        - user-management
+      operationId: set-password
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/changePassword'
+            example:
+              CurrentPassword: Current_p@ssword
+              Password: VERY_str0ng_p@ssword
+
+      responses:
+        '204':
+          description: Successful operation
+          content: {}
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "404001"
+                Message: User not found
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+      security:
+        - bearerAuth: []
+
+  /users/password/reset/request:
+    post:
+      description: Initiate password reset
+      tags:
+        - user-management
+      operationId: initiate-password-reset
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/resetPasswordRequest'
+            example:
+              Email: john.wick@finto.io
+              Locale: en
+
+      responses:
+        '204':
+          description: Successful operation
+          content: {}
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+      security:
+        - bearerAuth: []
+
+  /users/username/remind:
+    post:
+      description: Remind username
+      tags:
+        - user-management
+      operationId: remind-username
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/resetPasswordRequest'
+            example:
+              Email: john.wick@finto.io
+
+      responses:
+        '204':
+          description: Successful operation
+          content: {}
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "409008"
+                Message: You have already sent email in the last minute. Try again later.
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+      security:
+        - bearerAuth: []
+
+  /users/password/reset/confirm:
+    post:
+      description: Confirm password reset
+      tags:
+        - user-management
+      operationId: confirm-password-reset
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/resetPasswordConfirm'
+            example:
+              Email: john.wick@finto.io
+              Code: 87867asdfhjakjh67876
+              NewPassword: VERY_str0ng_p@ssword
+
+      responses:
+        '204':
+          description: Successful operation
+          content: {}
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+      security:
+        - bearerAuth: []
+
+  /users/2fa/request:
+    patch:
+      description: Send OTP code to request 2fa activation
+      tags:
+        - user-management
+      operationId: Send OTP code to request 2fa activation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/mfaActivationRequest'
+            example:
+              PhoneNumber: "+123456789012"
+              Locale: "en"
+
+      responses:
+        '204':
+          description: Successful operation
+          content: {}
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '406':
+          description: Not Acceptable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "406001"
+                Message: 2fa is not configured
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "409008"
+                Message: You have already sent email in the last minute. Try again later.
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+      security:
+        - bearerAuth: []
+
+  /users/2fa/confirm:
+    patch:
+      description: 2fa activation confirmation
+      tags:
+        - user-management
+      operationId: 2fa activation confirmation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/mfaActivationConfirm'
+            example:
+              PhoneNumber: "+123456789012"
+              Otp: 123456
+              Password: VERY_str0ng_p@ssword
+              Scope: identity
+
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/tokenResponse'
+              example:
+                access_token: eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjE3NTkyOTYxODAsImlhdCI6MTc1OTI5NTg4MCwianRpIjoidHJydGNjOmZjMzYyMmY4LWZiNDktZDU0Zi03YTAxLTk1NGZiYTNlNGFhOCIsImlzcyI6Imh0dHA6Ly90ZXN0L3Rlc3QxIiwic3ViIjoiZGZmMmZhOTUtNGU0NC00ZGIyLWE4YmEtNzczMTRkMWVhNDk4IiwidHlwIjoiQmVhcmVyIiwiYXpwIjoiOTZmZDJmMjItYzA4Yi00MWYxLWIwYjQtMDM3NjE2OTM4ODUyIiwic2NvcGUiOiJvcGVuaWQiLCJjbGllbnRIb3N0IjoiMTAuMjI5LjI4LjQwIiwiY2xpZW50SWQiOiI5NmZkMmYyMi1jMDhiLTQxZjEtYjBiNC0wMzc2MTY5Mzg4NTIiLCJncm91cHMiOlsiUEFSVE5FUiJdLCIyZmEiOiJmYWxzZSIsImNsaWVudEFkZHJlc3MiOiIxMC4yMjkuMjguNDAifQ.
+                token_type: Bearer
+                expires_in: 3599
+                refresh_token: 6dfedWz6RtpS5Rt7Y6CJBLw6kqI
+                scope: identity
+
+        '204':
+          description: Successful operation
+          content: { }
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '406':
+          description: Not Acceptable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "406001"
+                Message: 2fa is not configured
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "409008"
+                Message: You have already sent email in the last minute. Try again later.
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+      security:
+        - bearerAuth: []
+
+  /users/profile:
+    get:
+      description: Retrives the details of an existing user
+      tags:
+        - user-management
+      operationId: retrieve-a-user
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/user'
+              example:
+                Username: john_wick
+                Email: john.wick@finto.io
+                FirstName: John
+                LastName: Wick
+                PhoneNumber: "+123456789012"
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "404001"
+                Message: User not found
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+      security:
+        - bearerAuth: []
+    patch:
+      description: Updates the details of an existing user
+      tags:
+        - user-management
+      operationId: update-a-user
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/updateUserProfile'
+            example:
+              FirstName: John
+              LastName: Wick
+              PhoneNumber: "+123456789012"
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/user'
+              example:
+                Username: john_wick
+                Email: john.wick@finto.io
+                FirstName: John
+                LastName: Wick
+                PhoneNumber: "+123456789012"
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "404001"
+                Message: User not found
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+      security:
+        - bearerAuth: []
+
+  /users/certificates:
+    post:
+      description: Issues a new user's certificate
+      tags:
+        - user-management
+      operationId: create-a-user's-certificate
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/certificateRequest'
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/certificateResponse'
+              example:
+                CertificateId: 9ao60f
+                CreatedDate: 2016-06-15T22:33:13Z
+                ExpirationDate: 2017-06-15T22:33:13Z
+                PemEncodedCertificate: "-----BEGIN CERTIFICATE-----\r\nMIIC6T...2yQAGEHvs=\r\n-----END CERTIFICATE-----"
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '429':
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "429001"
+                Message: The request has reached its throttling limit
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+      security:
+        - bearerAuth: []
+
+  /token:
+    post:
+      description: >-
+        Returns access token for an application or user
+      tags:
+        - authentication
+      operationId: get-access-token
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/tokenRequest'
+            example:
+              - grant_type: client_credentials
+                client_id: 7b7b5883-760e-4457-8337-4b8c8d9675f2
+                username: 7b7b5883-760e-4457-8337-4b8c8d9675f2
+                password: eff43721-ca1d-42c1-a103-82cf6aa43373
+                scope: partner-subscription-management
+              - grant_type: password
+                client_id: 7b7b5883-760e-4457-8337-4b8c8d9675f2
+                username: john_wick
+                password: VERY_str0ng_p@ssword
+                scope: identity
+              - grant_type: refresh_token
+                client_id: 7b7b5883-760e-4457-8337-4b8c8d9675f2
+                refresh_token: 6dfedWz6RtpS5Rt7Y6CJBLw6kqI
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/tokenResponse'
+              example:
+                access_token: eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjE3NTkyOTYxODAsImlhdCI6MTc1OTI5NTg4MCwianRpIjoidHJydGNjOmZjMzYyMmY4LWZiNDktZDU0Zi03YTAxLTk1NGZiYTNlNGFhOCIsImlzcyI6Imh0dHA6Ly90ZXN0L3Rlc3QxIiwic3ViIjoiZGZmMmZhOTUtNGU0NC00ZGIyLWE4YmEtNzczMTRkMWVhNDk4IiwidHlwIjoiQmVhcmVyIiwiYXpwIjoiOTZmZDJmMjItYzA4Yi00MWYxLWIwYjQtMDM3NjE2OTM4ODUyIiwic2NvcGUiOiJvcGVuaWQiLCJjbGllbnRIb3N0IjoiMTAuMjI5LjI4LjQwIiwiY2xpZW50SWQiOiI5NmZkMmYyMi1jMDhiLTQxZjEtYjBiNC0wMzc2MTY5Mzg4NTIiLCJncm91cHMiOlsiUEFSVE5FUiJdLCIyZmEiOiJmYWxzZSIsImNsaWVudEFkZHJlc3MiOiIxMC4yMjkuMjguNDAifQ.
+                token_type: Bearer
+                expires_in: 3599
+                refresh_token: 6dfedWz6RtpS5Rt7Y6CJBLw6kqI
+                scope: identity
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/token_error'
+              example:
+                error: unsupported_grant_type
+                error_description: Unsupported grant_type
+
+        '401':
+          description: Unauthorised
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/token_error'
+              example:
+                error: unauthorized_client
+                error_description: Invalid client secret
+
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/realm_not_found_error'
+              example:
+                error: "RESTEASY003210: Could not find resource for full path: https://sandbox-api.finto.io/realms//protocol/openid-connect/token"
+
+      security:
+        - basic: []
+    delete:
+      description: >-
+        Remove all user sessions associated with the user.
+      tags:
+        - authentication
+      operationId: logout-user
+      responses:
+        '204':
+          description: Successful operation
+          content: { }
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+      security:
+        - bearerAuth: [ ]
+
+  /token2FA/otp:
+    post:
+      description: 2FA Access Token (Init)
+      tags:
+        - authentication
+      operationId: 2FA-access-token-(init)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/signInRequest'
+            example:
+              Username: test_user
+              Password: pass123
+              Scope: accounts
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/tokenResponse'
+              example:
+                access_token: eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjE3NTkyOTYxODAsImlhdCI6MTc1OTI5NTg4MCwianRpIjoidHJydGNjOmZjMzYyMmY4LWZiNDktZDU0Zi03YTAxLTk1NGZiYTNlNGFhOCIsImlzcyI6Imh0dHA6Ly90ZXN0L3Rlc3QxIiwic3ViIjoiZGZmMmZhOTUtNGU0NC00ZGIyLWE4YmEtNzczMTRkMWVhNDk4IiwidHlwIjoiQmVhcmVyIiwiYXpwIjoiOTZmZDJmMjItYzA4Yi00MWYxLWIwYjQtMDM3NjE2OTM4ODUyIiwic2NvcGUiOiJvcGVuaWQiLCJjbGllbnRIb3N0IjoiMTAuMjI5LjI4LjQwIiwiY2xpZW50SWQiOiI5NmZkMmYyMi1jMDhiLTQxZjEtYjBiNC0wMzc2MTY5Mzg4NTIiLCJncm91cHMiOlsiUEFSVE5FUiJdLCIyZmEiOiJmYWxzZSIsImNsaWVudEFkZHJlc3MiOiIxMC4yMjkuMjguNDAifQ.
+                token_type: Bearer
+                expires_in: 3599
+                refresh_token: 6dfedWz6RtpS5Rt7Y6CJBLw6kqI
+                scope: identity
+        '202':
+          description: Successful operation
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorised
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401001"
+                Message: Invalid, missed or outdated credentials
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '406':
+          description: Not Acceptable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "406001"
+                Message: 2fa is not configured
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+      security:
+        - bearerAuth: [ ]
+
+  /token2FA:
+    post:
+      description: >-
+        2FA Access Token (Complete)
+      tags:
+        - authentication
+      operationId: 2FA-access-token-(complete)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/signInConfirmRequest'
+            example:
+              Username: test_user
+              Password: pass123
+              Scope: accounts
+              Code: '123456'
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/tokenResponse'
+              example:
+                access_token: eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjE3NTkyOTYxODAsImlhdCI6MTc1OTI5NTg4MCwianRpIjoidHJydGNjOmZjMzYyMmY4LWZiNDktZDU0Zi03YTAxLTk1NGZiYTNlNGFhOCIsImlzcyI6Imh0dHA6Ly90ZXN0L3Rlc3QxIiwic3ViIjoiZGZmMmZhOTUtNGU0NC00ZGIyLWE4YmEtNzczMTRkMWVhNDk4IiwidHlwIjoiQmVhcmVyIiwiYXpwIjoiOTZmZDJmMjItYzA4Yi00MWYxLWIwYjQtMDM3NjE2OTM4ODUyIiwic2NvcGUiOiJvcGVuaWQiLCJjbGllbnRIb3N0IjoiMTAuMjI5LjI4LjQwIiwiY2xpZW50SWQiOiI5NmZkMmYyMi1jMDhiLTQxZjEtYjBiNC0wMzc2MTY5Mzg4NTIiLCJncm91cHMiOlsiUEFSVE5FUiJdLCIyZmEiOiJmYWxzZSIsImNsaWVudEFkZHJlc3MiOiIxMC4yMjkuMjguNDAifQ.
+                token_type: Bearer
+                expires_in: 3599
+                refresh_token: 6dfedWz6RtpS5Rt7Y6CJBLw6kqI
+                scope: identity
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorised
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401001"
+                Message: Invalid, missed or outdated credentials
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '406':
+          description: Not Acceptable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "406001"
+                Message: 2fa is not configured
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+      security:
+        - bearerAuth: []
+
+  /users2FA/otp:
+    post:
+      description: Creates a new user of the application with 2fa (Init)
+      tags:
+        - user-management
+      operationId: 2FA-register-user-(init)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/registerUserInitRequest'
+            example:
+              PhoneNumber: "+777777"
+              Locale: ar
+      responses:
+        '204':
+          description: Successful operation
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorised
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401001"
+                Message: Invalid, missed or outdated credentials
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '406':
+          description: Not Acceptable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "406001"
+                Message: 2fa is not configured
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+      security:
+        - bearerAuth: [ ]
+
+  /users2FA:
+    post:
+      description: >-
+        Creates a new user of the application with 2fa (Complete)
+      tags:
+        - user-management
+      operationId: 2FA-register-user-(complete)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/registerUserConfirmRequest'
+            example:
+              Username: test_user
+              Password: pass123
+              PhoneNumber: "+123456789012"
+              Email: john.wick@finto.io
+              LastName: Wick
+              FirstName: John
+              Scope: accounts
+              Otp: '123456'
+      responses:
+        '201':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/registerUserConfirmResponse'
+              example:
+                Username: test_user
+                Id: eb7b5883-760e-4457-8337-db8c8d9675f2
+                PhoneNumber: "+123456789012"
+                Email: john.wick@finto.io
+                LastName: Wick
+                FirstName: John
+                Token:
+                  access_token: eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjE3NTkyOTYxODAsImlhdCI6MTc1OTI5NTg4MCwianRpIjoidHJydGNjOmZjMzYyMmY4LWZiNDktZDU0Zi03YTAxLTk1NGZiYTNlNGFhOCIsImlzcyI6Imh0dHA6Ly90ZXN0L3Rlc3QxIiwic3ViIjoiZGZmMmZhOTUtNGU0NC00ZGIyLWE4YmEtNzczMTRkMWVhNDk4IiwidHlwIjoiQmVhcmVyIiwiYXpwIjoiOTZmZDJmMjItYzA4Yi00MWYxLWIwYjQtMDM3NjE2OTM4ODUyIiwic2NvcGUiOiJvcGVuaWQiLCJjbGllbnRIb3N0IjoiMTAuMjI5LjI4LjQwIiwiY2xpZW50SWQiOiI5NmZkMmYyMi1jMDhiLTQxZjEtYjBiNC0wMzc2MTY5Mzg4NTIiLCJncm91cHMiOlsiUEFSVE5FUiJdLCIyZmEiOiJmYWxzZSIsImNsaWVudEFkZHJlc3MiOiIxMC4yMjkuMjguNDAifQ.
+                  token_type: Bearer
+                  expires_in: 3599
+                  refresh_token: 6dfedWz6RtpS5Rt7Y6CJBLw6kqI
+                  scope: accounts
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorised
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401001"
+                Message: Invalid, missed or outdated credentials
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '406':
+          description: Not Acceptable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "406001"
+                Message: 2fa is not configured
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+      security:
+        - bearerAuth: []
+
+components:
+  schemas:
+    certificates:
+      required:
+        - keys
+      type: object
+      description: Array of public keys
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/items'
+
+    userCreation:
+      required:
+        - Email
+        - Password
+        - Username
+      type: object
+      properties:
+        Email:
+          maxLength: 255
+          minLength: 3
+          type: string
+          description: Email of the application user
+        Username:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: Username of the application user
+        Password:
+          maxLength: 255
+          minLength: 8
+          type: string
+          description: Password of the application user
+        FirstName:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: First name of the application user
+        LastName:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: Last name of the application user
+        PhoneNumber:
+          maxLength: 16
+          minLength: 4
+          pattern: ^\+[1-9][0-9]*$
+          type: string
+          description: >-
+            Phone number of the application user. Should start from a + (plus),
+            no zero as a first digit is allowed.
+
+    userWithId:
+      required:
+        - Email
+        - FirstName
+        - Id
+        - LastName
+        - PhoneNumber
+        - Username
+      type: object
+      properties:
+        Username:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: Username of the application user
+        Id:
+          maxLength: 36
+          minLength: 36
+          type: string
+          description: Id of the application user
+        PhoneNumber:
+          maxLength: 16
+          minLength: 4
+          type: string
+          description: Phone number of the application user
+        Email:
+          maxLength: 255
+          minLength: 3
+          type: string
+          description: Email of the application user
+        LastName:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: Last name of the application user
+        FirstName:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: First name of the application user
+
+    error:
+      required:
+        - Code
+        - Message
+      type: object
+      properties:
+        Code:
+          type: string
+          description: Error code
+        Message:
+          type: string
+          description: Human readable error description
+        DateTime:
+          type: string
+          description: Timestamp indicating when error has occured
+          format: date-time-only
+        RequestId:
+          type: string
+          description: Request correlation id received in the request
+
+    token_error:
+      required:
+        - error
+        - error_message
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error identificator
+        error_message:
+          type: string
+          description: Human readable error description
+
+    realm_not_found_error:
+      required:
+        - error
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+
+    changePassword:
+      required:
+        - CurrentPassword
+        - Password
+      type: object
+      properties:
+        CurrentPassword:
+          maxLength: 255
+          minLength: 8
+          type: string
+          description: Current password of the application user
+        Password:
+          maxLength: 255
+          minLength: 8
+          type: string
+          description: New password of the application user
+
+    resetPasswordRequest:
+      required:
+        - Email
+      type: object
+      properties:
+        Email:
+          maxLength: 255
+          minLength: 3
+          type: string
+          description: Email of the application user
+        Locale:
+          type: string
+          description: Locale of the user
+
+    resetPasswordConfirm:
+      required:
+        - Email
+        - Code
+        - NewPassword
+      type: object
+      properties:
+        Email:
+          maxLength: 255
+          minLength: 3
+          type: string
+          description: Email of the application user
+        Code:
+          maxLength: 20
+          minLength: 20
+          type: string
+          description: OTP code
+        NewPassword:
+          maxLength: 255
+          minLength: 8
+          type: string
+          description: New password of the application user
+
+    mfaActivationRequest:
+      required:
+        - PhoneNumber
+      type: object
+      properties:
+        Email:
+          maxLength: 255
+          minLength: 3
+          type: string
+          description: Phone number of the user
+        Locale:
+          maxLength: 2
+          minLength: 2
+          type: string
+          description: Locale
+
+    mfaActivationConfirm:
+      required:
+        - PhoneNumber
+        - Otp
+      type: object
+      properties:
+        PhoneNumber:
+          maxLength: 255
+          minLength: 3
+          type: string
+          description: Phone number of the user
+        Otp:
+          maxLength: 6
+          minLength: 6
+          type: string
+          description: OTP code
+        Password:
+          maxLength: 255
+          minLength: 8
+          type: string
+          description: Password of the user
+        Scope:
+          type: string
+          description: Scope name. Indicates what API user can access
+
+    signInRequest:
+      required:
+        - Username
+        - Password
+      type: object
+      properties:
+        Username:
+          type: string
+          description: Username of the user
+        Password:
+          type: string
+          description: Password of the user
+        Scope:
+          type: string
+          description: Scope name. Indicates what API user can access
+
+    signInConfirmRequest:
+      required:
+        - Username
+        - Password
+        - Code
+      type: object
+      properties:
+        Username:
+          type: string
+          description: Username of the user
+        Password:
+          type: string
+          description: Password of the user
+        Scope:
+          type: string
+          description: Scope name. Indicates what API user can access
+        Code:
+          maxLength: 6
+          minLength: 6
+          type: string
+          description: OTP code
+
+    registerUserInitRequest:
+          required:
+            - PhoneNumber
+          type: object
+          properties:
+            PhoneNumber:
+              type: string
+              description: Phone number of the user
+            Locale:
+              type: string
+              description: Locale of the user
+
+    registerUserConfirmRequest:
+      required:
+        - Username
+        - PhoneNumber
+        - Email
+        - Otp
+      type: object
+      properties:
+        Username:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: Username of the application user
+        PhoneNumber:
+          maxLength: 16
+          minLength: 4
+          type: string
+          description: Phone number of the application user
+        Email:
+          maxLength: 255
+          minLength: 3
+          type: string
+          description: Email of the application user
+        LastName:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: Last name of the application user
+        FirstName:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: First name of the application user
+        Otp:
+          maxLength: 6
+          minLength: 6
+          type: string
+          description: OTP code
+        Scope:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: >-
+            Scope name. Indicates the API that application is going to access with the token.
+
+    registerUserConfirmResponse:
+      required:
+        - Username
+        - Id
+        - PhoneNumber
+        - Email
+      type: object
+      properties:
+        Username:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: Username of the application user
+        Id:
+          maxLength: 36
+          minLength: 36
+          type: string
+          description: Id of the application user
+        PhoneNumber:
+          maxLength: 16
+          minLength: 4
+          type: string
+          description: Phone number of the application user
+        Email:
+          maxLength: 255
+          minLength: 3
+          type: string
+          description: Email of the application user
+        LastName:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: Last name of the application user
+        FirstName:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: First name of the application user
+        Token:
+          type: object
+          description: Data of the token
+          properties:
+            access_token:
+              minLength: 1
+              type: string
+              description: Access token to invoke Finto API methods
+            token_type:
+              minLength: 1
+              type: string
+              description: Type of token
+            expires_in:
+              maximum: 2147483647
+              minimum: 0
+              type: number
+              description: Token lifetime in seconds
+            refresh_token:
+              minLength: 1
+              type: string
+              description: Refresh token for the access token
+            scope:
+              minLength: 1
+              type: string
+              description: Scope name. Indicates the API that application is going to access with the token.
+
+    user:
+      required:
+        - Email
+        - FirstName
+        - LastName
+        - PhoneNumber
+        - Username
+      type: object
+      properties:
+        Username:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: Username of the application user
+        Email:
+          maxLength: 255
+          minLength: 3
+          type: string
+          description: Email of the application user
+        FirstName:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: First name of the application user
+        LastName:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: Last name of the application user
+        PhoneNumber:
+          maxLength: 16
+          minLength: 4
+          type: string
+          description: Phone number of the application user
+
+    updateUserProfile:
+      type: object
+      properties:
+        FirstName:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: First name of the application user
+        LastName:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: Last name of the application user
+        PhoneNumber:
+          maxLength: 16
+          minLength: 4
+          pattern: ^\+[1-9][0-9]*$
+          type: string
+          description: >-
+            Phone number of the application user. Should start from a + (plus),
+            no zero as a first digit is allowed.
+
+    tokenRequest:
+      required:
+        - client_id
+        - grant_type
+        - scope
+      type: object
+      properties:
+        grant_type:
+          type: string
+          description: Type of the authentication flow
+          default: client_credentials
+          enum:
+            - client_credentials
+            - password
+            - refresh_token
+        client_id:
+          maxLength: 36
+          minLength: 36
+          type: string
+          description: Supply the unique client id of the application
+        username:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: Username of the application user. Required for the "password" grant type.
+        password:
+          maxLength: 255
+          minLength: 8
+          type: string
+          description: Password of the application user. Required for the "password" grant type.
+        refresh_token:
+          type: string
+          description: Refresh token. Required for the "refresh_token" grant type.
+        scope:
+          maxLength: 255
+          minLength: 1
+          type: string
+          description: >-
+            Scope name. Indicates the API that application is going to access with the token.
+
+    tokenResponse:
+      required:
+        - access_token
+        - expires_in
+        - token_type
+      type: object
+      properties:
+        access_token:
+          minLength: 1
+          type: string
+          description: Access token to invoke Finto API methods
+        token_type:
+          minLength: 1
+          type: string
+          description: Type of token
+        expires_in:
+          maximum: 2147483647
+          minimum: 0
+          type: number
+          description: Token lifetime in seconds
+        refresh_token:
+          minLength: 1
+          type: string
+          description: Refresh token for the access token
+        scope:
+          minLength: 1
+          type: string
+          description: Scope name. Indicates the API that application is going to access with the token.
+
+    items:
+      required:
+        - e
+        - kid
+        - kty
+        - 'n'
+        - use
+        - x5c
+        - x5t
+        - x5t#S256
+      type: object
+      properties:
+        kid:
+          title: (Key ID) Parameter
+          type: string
+          description: >
+            The "kid" (key ID) parameter is used to match a specific key.  This
+            is used, for instance, to choose among a set of keys within a JWK
+            Set during key rollover.  The structure of the "kid" value is
+            unspecified.  When "kid" values are used within a JWK Set, different
+            keys within the JWK Set SHOULD use distinct "kid" values.  (One
+            example in which different keys might use the same "kid" value is if
+            they have different "kty" (key type) values but are considered to be
+            equivalent alternatives by the application using them.)  The "kid"
+            value is a case-sensitive string.  Use of this member is OPTIONAL.
+            When used with JWS or JWE, the "kid" value is used to match a JWS or
+            JWE "kid" Header Parameter value.
+        kty:
+          title: (Key Type) Parameter
+          type: string
+          description: >
+            The "kty" (key type) parameter identifies the cryptographic
+            algorithm family used with the key, such as "RSA" or "EC".  "kty" values
+            should either be registered in the IANA "JSON Web Key Types" registry
+            established by [JWA] or be a value that contains a Collision-Resistant Name.
+            The "kty" value is a case-sensitive string.
+            This member MUST be present in a JWK.
+        alg:
+          title: (Algorithm) Parameter
+          type: string
+          description: >
+            The "alg" (algorithm) parameter identifies the algorithm intended
+            for use with the key.  The values used should either be registered in
+            the IANA "JSON Web Signature and Encryption Algorithms" registry
+            established by [JWA] or be a value that contains a Collision-
+            Resistant Name.  The "alg" value is a case-sensitive ASCII string.
+            Use of this member is OPTIONAL.
+        use:
+          title: (Public Key Use) Parameter
+          type: string
+          description: >
+            The "use" (public key use) parameter identifies the intended use of
+            the public key.  The "use" parameter is employed to indicate whether
+            a public key is used for encrypting data or verifying the signature
+            on data.
+            When a key is used to wrap another key and a public key use
+            designation for the first key is desired, the "enc" (encryption) key
+            use value is used, since key wrapping is a kind of encryption.  The
+            "enc" value is also to be used for public keys used for key
+            agreement operations.
+          enum:
+            - sig
+            - enc
+        'n':
+          title: RSA key values
+          type: string
+          description: RSA key values
+        e:
+          title: RSA key values
+          type: string
+          description: RSA key values
+        x5c:
+          title: (X.509 Certificate Chain) Parameter
+          type: array
+          description: >
+            The "x5c" (X.509 certificate chain) parameter contains a chain of
+            one or more PKIX certificates [RFC5280].  The certificate chain is
+            represented as a JSON array of certificate value strings.  Each
+            string in the array is a base64-encoded (Section 4 of [RFC4648] --
+            not base64url-encoded) DER [ITU.X690.1994] PKIX certificate value.
+            The PKIX certificate containing the key value MUST be the first
+            certificate.  This MAY be followed by additional certificates, with
+            each subsequent certificate being the one used to certify the
+            previous one.  The key in the first certificate MUST match the
+            public key represented by other members of the JWK.
+            Use of this member is OPTIONAL.
+          items:
+            type: string
+        x5t:
+          title: (X.509 Certificate SHA-1 Thumbprint) Parameter
+          type: string
+          description: |
+            The "x5t" (X.509 certificate SHA-1 thumbprint) parameter is a
+            base64url-encoded SHA-1 thumbprint (a.k.a. digest) of the DER
+            encoding of an X.509 certificate [RFC5280].  Note that certificate
+            thumbprints are also sometimes known as certificate fingerprints.
+            The key in the certificate MUST match the public key represented by
+            other members of the JWK.  Use of this member is OPTIONAL.
+        x5t#S256:
+          title: (X.509 Certificate SHA-256 Thumbprint) Parameter
+          type: string
+          description: |
+            The "x5t#S256" (X.509 certificate SHA-256 thumbprint) parameter is a
+            base64url-encoded SHA-256 thumbprint (a.k.a. digest) of the DER
+            encoding of an X.509 certificate [RFC5280].  Note that certificate
+            thumbprints are also sometimes known as certificate fingerprints.
+            The key in the certificate MUST match the public key represented by
+            other members of the JWK.  Use of this member is OPTIONAL.
+      description: https://www.rfc-editor.org/rfc/rfc7517#page-5
+
+    certificateRequest:
+      required:
+        - File
+      type: object
+      properties:
+        File:
+          type: string
+          description: File that contains the certificate signing request (CSR)
+          format: binary
+
+    certificateResponse:
+      required:
+        - CertificateId
+        - CreatedDate
+        - ExpirationDate
+        - PemEncodedCertificate
+      type: object
+      properties:
+        CertificateId:
+          type: string
+          description: The identifier of the certificate.
+        CreatedDate:
+          type: string
+          description: The timestamp when the certificate was created.
+          format: date-time
+        ExpirationDate:
+          type: string
+          description: The timestamp when the certificate will expire.
+          format: date-time
+        PemEncodedCertificate:
+          type: string
+          description: The PEM-encoded public key of the certificate, which can be used to configure certificate authentication in the integration endpoint.
+    rsaPublicKey:
+      required:
+        - RSAPublicKey
+      type: object
+      properties:
+        RSAPublicKey:
+          type: string
+      example:
+        RSAPublicKey: 'MIGeMA0GCSqGSIb3DQEBAQUAA4GMADCBiAKBgG1acdpYco9JajfuXbrG8G2/Z/Wi NY+grOdN4guOh5xmxNUrutg0QDZX74UqBlkvhJBrqoUJLrTRA5QN5/6+MX35cwDd R48w+61bTcrNPPCxOCBkrZWQA4O7+VDPe0bmnDTU6QrAHKcfE8uZxPifT+YSfMd4 wsTU/ifYIJIxt709AgMBAAE='
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      description: "See <b>Get access token</b> endpoint in <b>Identity API</b> <a href='https://developer.bankaletihad.com/docs/apis/identity#/default/Get%20access%20token' target='_blank'>specification</a>.<br/><br/><b>Scope</b> you need for this api is <b>identity</b>."
+      scheme: bearer
+      bearerFormat: JWT
+    basic:
+      type: http
+      description: This type of authorization is used to issue the application or user token with <b>Get access token</b> endpoint only
+      scheme: basic

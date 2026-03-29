@@ -1,0 +1,1023 @@
+openapi: 3.0.1
+info:
+  title: Accounts API
+  description: API allows managing Bank accounts for a third-party partner application
+  version: '1'
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: customers
+  - name: accounts
+  - name: other
+
+servers:
+  - url: https://api.developer.bankaletihad.com/api/v1/partner/accounts
+paths:
+  /customers:
+    get:
+      tags:
+        - customers
+      description: Returns all available for the partner customers and their accounts
+      operationId: list-all-customers
+      parameters:
+        - name: userId
+          in: query
+          description: |
+            The unique Id of the user
+          schema:
+            type: string
+        - name: pageNumber
+          in: query
+          description: |
+            The number of page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 4000000
+            default: 1
+        - name: pageSize
+          in: query
+          description: |
+            The number of items for page
+          schema:
+            type: integer
+            minimum: 10
+            maximum: 500
+            default: 50
+      responses:
+        '200':
+          description: Successful operation
+          headers:
+            Content-Range:
+              schema:
+                type: string
+              description: Pagination details
+              example: 0-19/4125
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/accountList'
+              example:
+                - Customer: e49423a3-bb08-477c-a5fb-d9d6539c8466
+                  User: e49423a3-bb08-477c-a5fb-d9d6539c8467
+                  Accounts:
+                    - '0010100067615101'
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+  /customers/{customerId}/accounts:
+    get:
+      tags:
+        - accounts
+      description: Returns all accounts for the specified customer
+      operationId: list-all-customer's-accounts
+      parameters:
+        - name: customerId
+          in: path
+          description: The unique Id of the customer
+          required: true
+          schema:
+            type: string
+        - name: pageNumber
+          in: query
+          description: |
+            The number of page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 4000000
+            default: 1
+        - name: pageSize
+          in: query
+          description: |
+            The number of items for page
+          schema:
+            type: integer
+            minimum: 10
+            maximum: 500
+            default: 50
+      responses:
+        '200':
+          description: Successful operation
+          headers:
+            Content-Range:
+              schema:
+                type: string
+              description: Pagination details
+              example: 0-19/4125
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/accounts'
+              example:
+                - Branch: '001'
+                  Number: '0010100067615101'
+                  Type: "3101"
+                  AlternateNumber: null
+                  Name: John Wick Savings Account
+                  BankName: BANK ALETIHAD
+                  Customer:
+                    Name: John Wick
+                    FullName: John Wick
+                    Type: INDIVIDUAL
+                  CurrencyCode: JOD
+                  NoDebit: false
+                  NoCredit: false
+                  Dormant: false
+                  CurrentBalance: 127370834.236
+                  LocalCurrencyCurrentBalance: 127370834.236
+                  BlockedAmount: 0.000
+                  AvailableBalance: 127370834.236
+                  IBAN: JO47UBSI1010000010100067615101
+                  SWIFT: UBSIJOAX
+                - Branch: '001'
+                  Number: '0010100067615102'
+                  Type: "3101"
+                  AlternateNumber: null
+                  Name: John Wick Savings Account
+                  BankName: BANK ALETIHAD
+                  Customer:
+                    Name: John Wick
+                    FullName: John Wick
+                    Type: INDIVIDUAL
+                  CurrencyCode: JOD
+                  NoDebit: false
+                  NoCredit: false
+                  Dormant: false
+                  CurrentBalance: 1.236
+                  LocalCurrencyCurrentBalance: 1.236
+                  BlockedAmount: 0.000
+                  AvailableBalance: 1.236
+                  IBAN: JO47UBSI1010000010100067615102
+                  SWIFT: UBSIJOAX
+
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "404001"
+                Message: Customer not found
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+    post:
+      tags:
+        - accounts
+      description: Opens a new account for the customer
+      operationId: create-an-account
+      parameters:
+        - name: customerId
+          in: path
+          description: Id of the customer
+          required: true
+          schema:
+            type: string
+        - name: Idempotency-key
+          in: header
+          description: |
+            The unique value should be specified on each new request to API. If you are uncertain about the execution result of the recently made request, you may repeat the request with the same content and the same idempotency key, it should give you the same response as it should have been for the previous request, but without actual request execution. It can be useful if you did not get a response to your request at all or received the timeout error.
+          required: true
+          schema:
+            pattern: ^\S+(.*\S+)*$
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/newAccount'
+            example:
+              Currency: JOD
+              Name: John Wick Savings Account
+        required: true
+      responses:
+        '201':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/account'
+              example:
+                Branch: '001'
+                Number: '0010100067615101'
+                Type: "3101"
+                AlternateNumber: null
+                Name: John Wick Savings Account
+                BankName: BANK ALETIHAD
+                Customer:
+                  Name: John Wick
+                  FullName: John Wick
+                  Type: INDIVIDUAL
+                CurrencyCode: JOD
+                NoDebit: false
+                NoCredit: false
+                Dormant: false
+                CurrentBalance: 127370834.236
+                LocalCurrencyCurrentBalance: 127370834.236
+                BlockedAmount: 0.000
+                AvailableBalance: 127370834.236
+                IBAN: JO47UBSI1010000010100067615101
+                SWIFT: UBSIJOAX
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "404001"
+                Message: Customer not found
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+  /customers/{customerId}/accounts/{accountNumber}:
+    get:
+      tags:
+        - accounts
+      description: Returns details of the customer's bank account
+      operationId: get-an-account
+      parameters:
+        - name: customerId
+          in: path
+          description: The unique Id of the customer
+          required: true
+          schema:
+            type: string
+        - name: accountNumber
+          in: path
+          description: Bank account number of the customer
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/account'
+              example:
+                Branch: '001'
+                Number: '0010100067615101'
+                Type: "3101"
+                AlternateNumber: null
+                Name: John Wick Savings Account
+                BankName: BANK ALETIHAD
+                Customer:
+                  Name: John Wick
+                  FullName: John Wick
+                  Type: INDIVIDUAL
+                CurrencyCode: JOD
+                NoDebit: false
+                NoCredit: false
+                Dormant: false
+                CurrentBalance: 127370834.236
+                LocalCurrencyCurrentBalance: 127370834.236
+                BlockedAmount: 0.000
+                AvailableBalance: 127370834.236
+                IBAN: JO47UBSI1010000010100067615101
+                SWIFT: UBSIJOAX
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "404001"
+                Message: Customer not found
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+    delete:
+      tags:
+        - accounts
+      description: Closes the customer's bank account
+      operationId: close-an-account
+      parameters:
+        - name: customerId
+          in: path
+          description: The unique Id of the customer
+          required: true
+          schema:
+            type: string
+        - name: accountNumber
+          in: path
+          description: Bank account number of the customer
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/closeAccount'
+            example:
+              CreditAccountNumber: '0010100067615101'
+        required: true
+      responses:
+        '204':
+          description: Successful operation
+          content: {}
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "404001"
+                Message: Customer not found
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+  /customers/{customerId}/payments/exchangeRates:
+    get:
+      tags:
+        - customers
+      description: Retrieve exchange rate
+      operationId: get-a-exchange-rate
+      parameters:
+        - name: customerId
+          in: path
+          description: Id of the customer
+          required: true
+          schema:
+            type: string
+        - name: fromCurrencyCode
+          in: query
+          description: |
+            Represents the ISO3 currency code of the customer account
+          required: true
+          schema:
+            type: string
+        - name: toCurrencyCode
+          in: query
+          description: |
+            Represents the ISO3 currency code of the beneficiary account
+          required: true
+          schema:
+            type: string
+        - name: fromCurrencyAmount
+          in: query
+          description: |
+            Represents the transfer amount
+          required: true
+          schema:
+            type: string
+        - name: customerAccount
+          in: query
+          description: |
+            Bank Account number of the customer to be used as a source of funds for the transfer
+          required: false
+          schema:
+            type: string
+        - name: type
+          in: query
+          description: |
+            Type of operation
+          required: true
+          example: CREDIT, DEBIT
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ExchangeRate:
+                    type: number
+                    description: Represents the exchange rate for the currency pair provided in the request
+                  ExchangedAmount:
+                    type: number
+                    description: Represents the amount calculated based on the exchange rate
+              example:
+                ExchangeRate: 0.9632983
+                ExchangedAmount: 4816.49
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "404001"
+                Message: Customer not found
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+  /customers/{customerId}/accounts/{accountNumber}/transactions:
+    get:
+      tags:
+        - accounts
+      description: Returns all transactions for the specified account completed during the requested period
+      operationId: list-all-transactions
+      parameters:
+        - name: dateFrom
+          in: query
+          description: Date from (not required, empty value equals missing value)
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          description: Date to (not required, empty value equals missing value)
+          schema:
+            type: string
+            format: date
+        - name: pageNumber
+          in: query
+          description: |
+            The number of page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 4000000
+            default: 1
+        - name: pageSize
+          in: query
+          description: |
+            The number of items for page
+          schema:
+            type: integer
+            minimum: 10
+            maximum: 500
+            default: 50
+        - name: customerId
+          in: path
+          description: The unique Id of the customer
+          required: true
+          schema:
+            type: string
+        - name: accountNumber
+          in: path
+          description: Bank account number of the customer
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/transactions'
+              example:
+                - Date: '2021-02-22'
+                  ValueDate: '2021-02-22'
+                  Description: Top up
+                  DebitCreditIndicator: C
+                  TransactionAmount: 100.003
+                  TransactionCurrency: JOD
+                - Date: '2021-02-22'
+                  ValueDate: '2021-02-22'
+                  Description: Top up
+                  DebitCreditIndicator: C
+                  TransactionAmount: 100.003
+                  TransactionCurrency: JOD
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "400001"
+                Message: '{field} has an invalid value'
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "401003"
+                Message: The access token provided is expired, revoked, malformed, or invalid for other reasons
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "403004"
+                Message: Resource owner authentication failed
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "404002"
+                Message: Account not found
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/error'
+              example:
+                Code: "500001"
+                Message: Internal Server Error
+                DateTime: "2020-05-14T21:12:03"
+                RequestId: "0786d365-2ea1-4dd6-8d9f-ef3d1af429dd"
+
+components:
+  schemas:
+    accountList:
+      type: array
+      items:
+        required:
+          - Accounts
+          - User
+          - Customer
+        type: object
+        properties:
+          Customer:
+            type: string
+            description: The unique Id of the customer
+          User:
+            type: string
+            description: The unique Id of the user
+          Accounts:
+            type: array
+            description: The list of account objects
+            items:
+              type: string
+    error:
+      required:
+        - Code
+        - Message
+      type: object
+      properties:
+        Code:
+          type: string
+          description: Code of the error
+        Message:
+          type: string
+          description: Description of the error
+        DateTime:
+          type: string
+          description: Timestamp indicating when error has occurred
+          format: date-time-only
+        RequestId:
+          type: string
+          description: Request correlation id received from the API consumer
+
+    newAccount:
+      required:
+        - Currency
+        - Name
+      type: object
+      properties:
+        Currency:
+          type: string
+          description: The ISO 3 chars code of the account currency
+        Name:
+          type: string
+          description: Account name
+
+    closeAccount:
+      type: object
+      properties:
+        CreditAccountNumber:
+          type: string
+          description: Account number to credit funds available on the account to be closed
+
+    account:
+      required:
+        - AlternateNumber
+        - AvailableBalance
+        - BankName
+        - BlockedAmount
+        - Branch
+        - CurrencyCode
+        - CurrentBalance
+        - Customer
+        - Dormant
+        - IBAN
+        - LocalCurrencyCurrentBalance
+        - Name
+        - NoCredit
+        - NoDebit
+        - Number
+        - SWIFT
+      type: object
+      properties:
+        Branch:
+          type: string
+          description: The code of the Bank branch that holds the account
+        Number:
+          type: string
+          description: Account number
+        AlternateNumber:
+          type: string
+          description: Alternate account number
+        Name:
+          type: string
+          description: Account name
+        IBAN:
+          type: string
+          description: Account IBAN
+        SWIFT:
+          type: string
+          description: SWIFT code
+        BankName:
+          type: string
+          description: Bank name
+        Customer:
+          $ref: '#/components/schemas/customer'
+        CurrencyCode:
+          type: string
+          description: The ISO 3 chars code of the account currency
+        NoDebit:
+          type: boolean
+          description: The indication that account debit is prohibited
+        NoCredit:
+          type: boolean
+          description: The indication that account credit is prohibited
+        Dormant:
+          type: boolean
+          description: The indication that account is dormant
+        CurrentBalance:
+          type: number
+          description: Account current balance in the account currency
+        LocalCurrencyCurrentBalance:
+          type: number
+          description: Account current balance in JOD
+        BlockedAmount:
+          type: number
+          description: Account blocked amount in the account currency
+        AvailableBalance:
+          type: number
+          description: Account available balance in the account currency
+
+    accounts:
+      type: array
+      items:
+        $ref: '#/components/schemas/account'
+
+    transactions:
+      type: array
+      description: The list of transaction objects
+      items:
+        $ref: '#/components/schemas/items'
+
+    customer:
+      required:
+        - FullName
+        - Name
+        - Type
+      type: object
+      properties:
+        Name:
+          type: string
+          description: Account holder name
+        FullName:
+          type: string
+          description: Account holder full name
+        Type:
+          type: string
+          description: Account holder customer type
+
+    items:
+      required:
+        - Date
+        - DebitCreditIndicator
+        - Description
+        - TransactionAmount
+        - TransactionCurrency
+        - ValueDate
+      type: object
+      properties:
+        Date:
+          type: string
+          description: Transaction date
+        ValueDate:
+          type: string
+          description: Transaction value date
+        Description:
+          type: string
+          description: Transaction description
+        DebitCreditIndicator:
+          type: string
+          description: Indicator of the transaction side. (D) for debit or (C) for credit
+        TransactionAmount:
+          type: number
+          description: Transaction amount
+        TransactionCurrency:
+          type: string
+          description: Transaction currency code
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      description: "See <b>Get access token</b> endpoint in <b>Identity API</b> <a href='https://developer.bankaletihad.com/docs/apis/identity#/default/Get%20access%20token' target='_blank'>specification</a>.<br/><br/><b>Scope</b> you need for this api is <b>accounts</b>."
+      scheme: bearer
+      bearerFormat: JWT
