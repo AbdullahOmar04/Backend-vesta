@@ -1765,7 +1765,7 @@ def _etihad_login_init(*, username: str, password: str, tpp_access_token: str) -
     payload = {
         "Username": username,
         "Password": password,
-        "Scope": "accounts",
+        "Scope": "openid ccounts",
     }
     r = requests.post(url, headers=headers, json=payload,cert=ETIHAD_MTLS ,timeout=20)
     if r.status_code == 202:
@@ -1786,7 +1786,7 @@ def _etihad_login_complete(*, username: str, password: str, otp_code: str, tpp_a
     payload = {
         "Username": username,
         "Password": password,
-        "Scope": "accounts",
+        "Scope": "openid accounts",
         "Code": otp_code,
     }
     r = requests.post(url, headers=headers, json=payload, cert=ETIHAD_MTLS, timeout=20)
