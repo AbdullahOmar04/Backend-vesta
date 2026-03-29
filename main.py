@@ -323,16 +323,16 @@ _subscribe_attempts: dict[str, list[float]] = {}
 _SUBSCRIBE_LIMIT = 5
 _SUBSCRIBE_WINDOW = 3600.0  # 1 hour
 
-
 @app.get("/subscribe")
-def subscribe(email: str, _uid: str = Depends(get_authenticated_uid)):
+def subscribe(email: str, request: Request):
+    ip = request.client.host
     now = time.time()
     window_start = now - _SUBSCRIBE_WINDOW
-    attempts = [t for t in _subscribe_attempts.get(_uid, []) if t > window_start]
+    attempts = [t for t in _subscribe_attempts.get(ip, []) if t > window_start]
     if len(attempts) >= _SUBSCRIBE_LIMIT:
         raise HTTPException(status_code=429, detail="Too many subscription attempts. Try again later.")
     attempts.append(now)
-    _subscribe_attempts[_uid] = attempts
+    _subscribe_attempts[ip] = attempts
 
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Invalid email address.")
@@ -344,6 +344,7 @@ def subscribe(email: str, _uid: str = Depends(get_authenticated_uid)):
     })
 
     return {"status": "success", "message": f"Subscription successful for {email}."}
+
 
 
 #####################################################AHLI BANK ##########################################################
