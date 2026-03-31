@@ -1755,9 +1755,32 @@ def _etihad_tpp_token() -> dict:
     return r.json()
 
 
+def _etihad_password_login(*, username: str, password: str) -> dict:
+    """Direct login via POST /token with password grant (no 2FA).
+    Used when the user has no 2FA configured (sandbox test users)."""
+    _etihad_require_env()
+    url = f"{ETIHAD_IDENTITY_BASE}/token"
+    headers = {
+        "Authorization": _etihad_basic_auth_header(),
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+    data = {
+        "grant_type": "password",
+        "client_id": ETIHAD_CLIENT_ID.strip(),
+        "username": username,
+        "password": password,
+        "scope": "accounts",
+    }
+    r = requests.post(url, headers=headers, data=data, cert=ETIHAD_MTLS, timeout=20)
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"Password login failed: {r.text[:500]}")
+    return r.json()
+
+
 def _etihad_login_init(*, username: str, password: str, tpp_access_token: str) -> dict:
     """POST /token2FA/otp — triggers OTP to user's phone.
-    Returns 200 (token if no 2FA configured) or 202 (OTP sent)."""
+    Returns 200 (token if no 2FA) or 202 (OTP sent).
+    Falls back to password grant if 2FA is not configured (406)."""
     url = f"{ETIHAD_IDENTITY_BASE}/token2FA/otp"
     headers = {
         "Authorization": f"Bearer {tpp_access_token}",
@@ -1766,14 +1789,20 @@ def _etihad_login_init(*, username: str, password: str, tpp_access_token: str) -
     payload = {
         "Username": username,
         "Password": password,
-        #"Scope": "openid ccounts",
+        "Scope": "accounts",
     }
-    r = requests.post(url, headers=headers, json=payload,cert=ETIHAD_MTLS ,timeout=20)
+    r = requests.post(url, headers=headers, json=payload, cert=ETIHAD_MTLS, timeout=20)
+
     if r.status_code == 202:
         return {"status": "otp_sent"}
     if r.status_code == 200:
         return {"status": "authenticated", "tokens": r.json()}
-    # Error
+
+    # 406 = 2FA not configured → fall back to direct password grant
+    if r.status_code == 406:
+        tok = _etihad_password_login(username=username, password=password)
+        return {"status": "authenticated", "tokens": tok}
+
     raise HTTPException(status_code=r.status_code, detail=f"Login init failed: {r.text[:500]}")
 
 
