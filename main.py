@@ -1915,6 +1915,14 @@ def _etihad_ensure_token(uid: str) -> str:
 # Etihad ENDPOINTS
 # ----------------------------
 
+class EtihadCreateUserBody(BaseModel):
+    username: str
+    password: str
+    email: str
+    first_name: str
+    last_name: str
+    phone_number: str
+
 class EtihadLoginInitBody(BaseModel):
     username: str
     password: str
@@ -1923,6 +1931,42 @@ class EtihadLoginCompleteBody(BaseModel):
     otp: str
     username: str | None = None
     password: str | None = None
+
+
+@app.post("/banks/etihad/create_user")
+def etihad_create_user(body: EtihadCreateUserBody, _uid: str = Depends(get_authenticated_uid)):
+    """Create a sandbox test user on the Finto platform.
+    POST /users — requires TPP token with 'identity' scope."""
+    _etihad_require_env()
+
+    try:
+        tpp = _etihad_tpp_token()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"TPP token error: {e}")
+
+    tpp_access = tpp.get("access_token", "")
+    if not tpp_access:
+        raise HTTPException(status_code=500, detail="No access_token in TPP response")
+
+    url = f"{ETIHAD_IDENTITY_BASE}/users"
+    headers = {
+        "Authorization": f"Bearer {tpp_access}",
+        "Content-Type": "application/json",
+        "Idempotency-key": str(uuid.uuid4()),
+    }
+    payload = {
+        "Username": body.username,
+        "Password": body.password,
+        "Email": body.email,
+        "FirstName": body.first_name,
+        "LastName": body.last_name,
+        "PhoneNumber": body.phone_number,
+    }
+
+    r = requests.post(url, headers=headers, json=payload, cert=ETIHAD_MTLS, timeout=20)
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"Create user failed: {r.text[:500]}")
+    return {"status": "success", "data": r.json()}
 
 
 @app.post("/banks/etihad/login_init/{uid}")

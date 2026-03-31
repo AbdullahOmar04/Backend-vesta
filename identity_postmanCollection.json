@@ -1,0 +1,1519 @@
+{
+  "info": {
+    "_postman_id": "ed190d87-ce08-4aea-9d7e-8a9912e92f95",
+    "name": "Identity API",
+    "description": "# Identity API\n\nMultiple guides regarding Developer portal and APIs usage can be found here - [https://developer.bankaletihad.com/docs/guides/getting-started](https://developer.bankaletihad.com/docs/guides/getting-started)  \nIf you have any questions, please feel free to contact us with you inquiries -[https://developer.bankaletihad.com/support](https://developer.bankaletihad.com/support)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "26853763",
+    "_collection_link": "https://www.postman.com/finto-io/workspace/finto-io/collection/26853763-ed190d87-ce08-4aea-9d7e-8a9912e92f95?action=share&creator=26853763&source=collection_link"
+  },
+  "item": [
+    {
+      "name": "v1",
+      "item": [
+        {
+          "name": "Authentication",
+          "item": [
+            {
+              "name": "Get token",
+              "item": [
+                {
+                  "name": "Generate user token",
+                  "request": {
+                    "auth": {
+                      "type": "basic",
+                      "basic": [
+                        {
+                          "key": "password",
+                          "value": "{{client_secret}}",
+                          "type": "string"
+                        },
+                        {
+                          "key": "username",
+                          "value": "{{client_id}}",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "method": "POST",
+                    "header": [],
+                    "body": {
+                      "mode": "urlencoded",
+                      "urlencoded": [
+                        {
+                          "key": "grant_type",
+                          "value": "password",
+                          "type": "text"
+                        },
+                        {
+                          "key": "client_id",
+                          "value": "{{client_id}}",
+                          "type": "text"
+                        },
+                        {
+                          "key": "scope",
+                          "value": "identity",
+                          "type": "text"
+                        },
+                        {
+                          "key": "username",
+                          "value": "{{username}}",
+                          "type": "text"
+                        },
+                        {
+                          "key": "password",
+                          "value": "{{password}}",
+                          "type": "text"
+                        }
+                      ]
+                    },
+                    "url": {
+                      "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+                      "protocol": "https",
+                      "host": [
+                        "api",
+                        "developer",
+                        "bankaletihad",
+                        "com"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "tppa",
+                        "token"
+                      ]
+                    },
+                    "description": "Returns access token for user"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Generate app token",
+                  "request": {
+                    "auth": {
+                      "type": "basic",
+                      "basic": [
+                        {
+                          "key": "password",
+                          "value": "{{client_secret}}",
+                          "type": "string"
+                        },
+                        {
+                          "key": "username",
+                          "value": "{{client_id}}",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "method": "POST",
+                    "header": [],
+                    "body": {
+                      "mode": "urlencoded",
+                      "urlencoded": [
+                        {
+                          "key": "grant_type",
+                          "value": "client_credentials",
+                          "type": "text"
+                        },
+                        {
+                          "key": "client_id",
+                          "value": "{{client_id}}",
+                          "type": "text"
+                        },
+                        {
+                          "key": "scope",
+                          "value": "identity",
+                          "type": "text"
+                        }
+                      ]
+                    },
+                    "url": {
+                      "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+                      "protocol": "https",
+                      "host": [
+                        "api",
+                        "developer",
+                        "bankaletihad",
+                        "com"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "tppa",
+                        "token"
+                      ]
+                    },
+                    "description": "Returns access token for application"
+                  },
+                  "response": []
+                }
+              ]
+            },
+            {
+              "name": "Get token with 2fa",
+              "item": [
+                {
+                  "name": "2FA Access Token (Init)",
+                  "request": {
+                    "auth": {
+                      "type": "oauth2",
+                      "oauth2": [
+                        {
+                          "key": "scope",
+                          "value": "identity",
+                          "type": "string"
+                        },
+                        {
+                          "key": "clientSecret",
+                          "value": "{{client_secret}}",
+                          "type": "string"
+                        },
+                        {
+                          "key": "clientId",
+                          "value": "{{client_id}}",
+                          "type": "string"
+                        },
+                        {
+                          "key": "accessTokenUrl",
+                          "value": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+                          "type": "string"
+                        },
+                        {
+                          "key": "grant_type",
+                          "value": "client_credentials",
+                          "type": "string"
+                        },
+                        {
+                          "key": "addTokenTo",
+                          "value": "header",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"Username\": \"test_user\",\n  \"Password\": \"Qazwsx123!\",\n  \"Scope\": \"identity\"\n}"
+                    },
+                    "url": {
+                      "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/token2FA/otp",
+                      "protocol": "https",
+                      "host": [
+                        "api",
+                        "developer",
+                        "bankaletihad",
+                        "com"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "tppa",
+                        "token2FA",
+                        "otp"
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "2FA Access Token (Complete)",
+                  "request": {
+                    "auth": {
+                      "type": "oauth2",
+                      "oauth2": [
+                        {
+                          "key": "scope",
+                          "value": "identity",
+                          "type": "string"
+                        },
+                        {
+                          "key": "clientSecret",
+                          "value": "{{client_secret}}",
+                          "type": "string"
+                        },
+                        {
+                          "key": "addTokenTo",
+                          "value": "header",
+                          "type": "string"
+                        },
+                        {
+                          "key": "clientId",
+                          "value": "{{client_id}}",
+                          "type": "string"
+                        },
+                        {
+                          "key": "accessTokenUrl",
+                          "value": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+                          "type": "string"
+                        },
+                        {
+                          "key": "grant_type",
+                          "value": "client_credentials",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"Username\": \"test_user\",\n  \"Password\": \"Qazwsx123!\",\n  \"Code\": \"123456\",\n  \"Scope\": \"identity\"\n}"
+                    },
+                    "url": {
+                      "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/token2FA",
+                      "protocol": "https",
+                      "host": [
+                        "api",
+                        "developer",
+                        "bankaletihad",
+                        "com"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "tppa",
+                        "token2FA"
+                      ]
+                    }
+                  },
+                  "response": []
+                }
+              ]
+            },
+            {
+              "name": "Get certificate",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/certificates/{{client_id}}",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "developer",
+                    "bankaletihad",
+                    "com"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tppa",
+                    "certificates",
+                    "{{client_id}}"
+                  ]
+                },
+                "description": "Retrieves the public certificate that can be used to validate access tokens"
+              },
+              "response": []
+            },
+            {
+              "name": "Logout user",
+              "request": {
+                "auth": {
+                  "type": "oauth2",
+                  "oauth2": [
+                    {
+                      "key": "accessTokenUrl",
+                      "value": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "scope",
+                      "value": "identity",
+                      "type": "string"
+                    },
+                    {
+                      "key": "grant_type",
+                      "value": "password_credentials",
+                      "type": "string"
+                    },
+                    {
+                      "key": "password",
+                      "value": "{{password}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "username",
+                      "value": "{{username}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "tokenType",
+                      "value": "Bearer",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientSecret",
+                      "value": "{{client_secret}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientId",
+                      "value": "{{client_id}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "tokenName",
+                      "value": "auth_token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "addTokenTo",
+                      "value": "header",
+                      "type": "string"
+                    },
+                    {
+                      "key": "client_authentication",
+                      "value": "header",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "developer",
+                    "bankaletihad",
+                    "com"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tppa",
+                    "token"
+                  ]
+                },
+                "description": "Remove all user sessions associated with the user."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "User Management",
+          "item": [
+            {
+              "name": "List all users",
+              "request": {
+                "auth": {
+                  "type": "oauth2",
+                  "oauth2": [
+                    {
+                      "key": "accessTokenUrl",
+                      "value": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "scope",
+                      "value": "identity",
+                      "type": "string"
+                    },
+                    {
+                      "key": "tokenType",
+                      "value": "Bearer",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientSecret",
+                      "value": "{{client_secret}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientId",
+                      "value": "{{client_id}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "tokenName",
+                      "value": "auth_token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "addTokenTo",
+                      "value": "header",
+                      "type": "string"
+                    },
+                    {
+                      "key": "client_authentication",
+                      "value": "header",
+                      "type": "string"
+                    },
+                    {
+                      "key": "grant_type",
+                      "value": "client_credentials",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/users?pageNumber=1&pageSize=50",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "developer",
+                    "bankaletihad",
+                    "com"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tppa",
+                    "users"
+                  ],
+                  "query": [
+                    {
+                      "key": "pageNumber",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "50"
+                    }
+                  ]
+                },
+                "description": "Retrieves a list of application users"
+              },
+              "response": []
+            },
+            {
+              "name": "Create a user",
+              "request": {
+                "auth": {
+                  "type": "oauth2",
+                  "oauth2": [
+                    {
+                      "key": "accessTokenUrl",
+                      "value": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "scope",
+                      "value": "identity",
+                      "type": "string"
+                    },
+                    {
+                      "key": "tokenType",
+                      "value": "Bearer",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientSecret",
+                      "value": "{{client_secret}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientId",
+                      "value": "{{client_id}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "tokenName",
+                      "value": "auth_token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "addTokenTo",
+                      "value": "header",
+                      "type": "string"
+                    },
+                    {
+                      "key": "client_authentication",
+                      "value": "header",
+                      "type": "string"
+                    },
+                    {
+                      "key": "grant_type",
+                      "value": "client_credentials",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Idempotency-key",
+                    "value": "{{$guid}}",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"Email\": \"john.wick_vk_1@finto.io\",\r\n  \"Username\": \"john_wick_vk_1\",\r\n  \"Password\": \"VERY_str0ng_@asd324\",\r\n  \"FirstName\": \"John\",\r\n  \"LastName\": \"Wick\",\r\n  \"PhoneNumber\": \"+123456789012\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/users",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "developer",
+                    "bankaletihad",
+                    "com"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tppa",
+                    "users"
+                  ]
+                },
+                "description": "Creates a new user of the application"
+              },
+              "response": []
+            },
+            {
+              "name": "Close user record",
+              "request": {
+                "auth": {
+                  "type": "oauth2",
+                  "oauth2": [
+                    {
+                      "key": "accessTokenUrl",
+                      "value": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "scope",
+                      "value": "identity",
+                      "type": "string"
+                    },
+                    {
+                      "key": "grant_type",
+                      "value": "client_credentials",
+                      "type": "string"
+                    },
+                    {
+                      "key": "password",
+                      "value": "{{password}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "username",
+                      "value": "{{username}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "tokenType",
+                      "value": "Bearer",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientSecret",
+                      "value": "{{client_secret}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientId",
+                      "value": "{{client_id}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "tokenName",
+                      "value": "auth_token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "addTokenTo",
+                      "value": "header",
+                      "type": "string"
+                    },
+                    {
+                      "key": "client_authentication",
+                      "value": "header",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/users/{{userId}}",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "developer",
+                    "bankaletihad",
+                    "com"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tppa",
+                    "users",
+                    "{{userId}}"
+                  ]
+                },
+                "description": "Close a user of the application"
+              },
+              "response": []
+            },
+            {
+              "name": "Set password",
+              "request": {
+                "auth": {
+                  "type": "oauth2",
+                  "oauth2": [
+                    {
+                      "key": "accessTokenUrl",
+                      "value": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "scope",
+                      "value": "identity",
+                      "type": "string"
+                    },
+                    {
+                      "key": "grant_type",
+                      "value": "password_credentials",
+                      "type": "string"
+                    },
+                    {
+                      "key": "password",
+                      "value": "{{password}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "username",
+                      "value": "{{username}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "tokenType",
+                      "value": "Bearer",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientSecret",
+                      "value": "{{client_secret}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientId",
+                      "value": "{{client_id}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "tokenName",
+                      "value": "auth_token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "addTokenTo",
+                      "value": "header",
+                      "type": "string"
+                    },
+                    {
+                      "key": "client_authentication",
+                      "value": "header",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "PATCH",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"Password\": \"VERY_str0ng_p@ssword\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/users/password",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "developer",
+                    "bankaletihad",
+                    "com"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tppa",
+                    "users",
+                    "password"
+                  ]
+                },
+                "description": "Sets password for a user"
+              },
+              "response": []
+            },
+            {
+              "name": "Retrieve a user",
+              "request": {
+                "auth": {
+                  "type": "oauth2",
+                  "oauth2": [
+                    {
+                      "key": "accessTokenUrl",
+                      "value": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "scope",
+                      "value": "identity",
+                      "type": "string"
+                    },
+                    {
+                      "key": "password",
+                      "value": "{{password}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "username",
+                      "value": "{{username}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "grant_type",
+                      "value": "password_credentials",
+                      "type": "string"
+                    },
+                    {
+                      "key": "tokenType",
+                      "value": "Bearer",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientSecret",
+                      "value": "{{client_secret}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientId",
+                      "value": "{{client_id}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "tokenName",
+                      "value": "auth_token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "addTokenTo",
+                      "value": "header",
+                      "type": "string"
+                    },
+                    {
+                      "key": "client_authentication",
+                      "value": "header",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/users/profile",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "developer",
+                    "bankaletihad",
+                    "com"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tppa",
+                    "users",
+                    "profile"
+                  ]
+                },
+                "description": "Retrives the details of an existing user"
+              },
+              "response": []
+            },
+            {
+              "name": "Update a user",
+              "request": {
+                "auth": {
+                  "type": "oauth2",
+                  "oauth2": [
+                    {
+                      "key": "accessTokenUrl",
+                      "value": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "scope",
+                      "value": "identity",
+                      "type": "string"
+                    },
+                    {
+                      "key": "password",
+                      "value": "{{password}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "username",
+                      "value": "{{username}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "grant_type",
+                      "value": "password_credentials",
+                      "type": "string"
+                    },
+                    {
+                      "key": "tokenType",
+                      "value": "Bearer",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientSecret",
+                      "value": "{{client_secret}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientId",
+                      "value": "{{client_id}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "tokenName",
+                      "value": "auth_token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "addTokenTo",
+                      "value": "header",
+                      "type": "string"
+                    },
+                    {
+                      "key": "client_authentication",
+                      "value": "header",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "PATCH",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"FirstName\": \"John\",\r\n  \"LastName\": \"Wick\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/users/profile",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "developer",
+                    "bankaletihad",
+                    "com"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tppa",
+                    "users",
+                    "profile"
+                  ]
+                },
+                "description": "Updates the details of an existing user"
+              },
+              "response": []
+            },
+            {
+              "name": "Create a user's certificate",
+              "request": {
+                "auth": {
+                  "type": "oauth2",
+                  "oauth2": [
+                    {
+                      "key": "accessTokenUrl",
+                      "value": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "scope",
+                      "value": "identity",
+                      "type": "string"
+                    },
+                    {
+                      "key": "password",
+                      "value": "{{password}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "username",
+                      "value": "{{username}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "grant_type",
+                      "value": "password_credentials",
+                      "type": "string"
+                    },
+                    {
+                      "key": "tokenType",
+                      "value": "Bearer",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientSecret",
+                      "value": "{{client_secret}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientId",
+                      "value": "{{client_id}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "tokenName",
+                      "value": "auth_token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "addTokenTo",
+                      "value": "header",
+                      "type": "string"
+                    },
+                    {
+                      "key": "client_authentication",
+                      "value": "header",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "file",
+                      "type": "file",
+                      "src": "server.csr"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/users/certificates",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "developer",
+                    "bankaletihad",
+                    "com"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tppa",
+                    "users",
+                    "certificates"
+                  ]
+                },
+                "description": "Issues a new user's certificate"
+              },
+              "response": []
+            },
+            {
+              "name": "Reset password OTP request",
+              "request": {
+                "auth": {
+                  "type": "oauth2",
+                  "oauth2": [
+                    {
+                      "key": "addTokenTo",
+                      "value": "header",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"Email\": \"john.wick_vk_1@finto.io\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/users/password/reset/request",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "developer",
+                    "bankaletihad",
+                    "com"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tppa",
+                    "users",
+                    "password",
+                    "reset",
+                    "request"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Reset password confirmation",
+              "request": {
+                "auth": {
+                  "type": "oauth2",
+                  "oauth2": [
+                    {
+                      "key": "addTokenTo",
+                      "value": "header",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"Email\": \"john.wick_vk_1@finto.io\",\r\n  \"Code\": \"1234567890abcde12345\",\r\n  \"NewPassword\": \"VERY_str0ng_p@ssword\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/users/password/reset/confirm",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "developer",
+                    "bankaletihad",
+                    "com"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tppa",
+                    "users",
+                    "password",
+                    "reset",
+                    "confirm"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Remind username",
+              "request": {
+                "auth": {
+                  "type": "oauth2",
+                  "oauth2": [
+                    {
+                      "key": "addTokenTo",
+                      "value": "header",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"Email\": \"john.wick_vk_1@finto.io\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/users/username/remind",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "developer",
+                    "bankaletihad",
+                    "com"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tppa",
+                    "users",
+                    "username",
+                    "remind"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create a user with 2FA (Init)",
+              "request": {
+                "auth": {
+                  "type": "oauth2",
+                  "oauth2": [
+                    {
+                      "key": "scope",
+                      "value": "identity",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientSecret",
+                      "value": "{{client_secret}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientId",
+                      "value": "{{client_id}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "accessTokenUrl",
+                      "value": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "grant_type",
+                      "value": "client_credentials",
+                      "type": "string"
+                    },
+                    {
+                      "key": "addTokenTo",
+                      "value": "header",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"PhoneNumber\": \"+777777\",\n  \"Locale\": \"en\"\n}"
+                },
+                "url": {
+                  "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/users2FA/otp",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "developer",
+                    "bankaletihad",
+                    "com"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tppa",
+                    "users2FA",
+                    "otp"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create a user with 2FA (Complete)",
+              "request": {
+                "auth": {
+                  "type": "oauth2",
+                  "oauth2": [
+                    {
+                      "key": "scope",
+                      "value": "identity",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientSecret",
+                      "value": "{{client_secret}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "addTokenTo",
+                      "value": "header",
+                      "type": "string"
+                    },
+                    {
+                      "key": "clientId",
+                      "value": "{{client_id}}",
+                      "type": "string"
+                    },
+                    {
+                      "key": "accessTokenUrl",
+                      "value": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+                      "type": "string"
+                    },
+                    {
+                      "key": "grant_type",
+                      "value": "client_credentials",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"Email\": \"john.wick_vk_1@finto.io\",\n    \"Username\": \"john_wick_vk_1\",\n    \"Password\": \"VERY_str0ng_@asd324\",\n    \"FirstName\": \"John\",\n    \"LastName\": \"Wick\",\n    \"PhoneNumber\": \"+123456789012\",\n    \"Otp\": \"123456\",\n    \"Scope\": \"identity\"\n}"
+                },
+                "url": {
+                  "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/users2FA",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "developer",
+                    "bankaletihad",
+                    "com"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tppa",
+                    "users2FA"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "2fa activation request",
+              "request": {
+                "auth": {
+                  "type": "oauth2",
+                  "oauth2": [
+                    {
+                      "key": "addTokenTo",
+                      "value": "header",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"PhoneNumber\": \"+777777\",\n  \"Locale\": \"en\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/users/2fa/request",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "developer",
+                    "bankaletihad",
+                    "com"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tppa",
+                    "users",
+                    "2fa",
+                    "request"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "2fa activation confirmation",
+              "request": {
+                "auth": {
+                  "type": "oauth2",
+                  "oauth2": [
+                    {
+                      "key": "addTokenTo",
+                      "value": "header",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"PhoneNumber\": \"+777777\",\r\n  \"Otp\": \"1234567890abcde12345\",\r\n  \"Password\": \"VERY_str0ng_p@ssword\",\r\n  \"Scope\": \"identity\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "https://api.developer.bankaletihad.com/api/v1/tppa/users/2fa/confirm",
+                  "protocol": "https",
+                  "host": [
+                    "api",
+                    "developer",
+                    "bankaletihad",
+                    "com"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "tppa",
+                    "users",
+                    "2fa",
+                    "confirm"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "auth": {
+    "type": "oauth2",
+    "oauth2": [
+      {
+        "key": "accessTokenUrl",
+        "value": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+        "type": "string"
+      },
+      {
+        "key": "scope",
+        "value": "identity",
+        "type": "string"
+      },
+      {
+        "key": "tokenName",
+        "value": "auth_token",
+        "type": "string"
+      },
+      {
+        "key": "challengeAlgorithm",
+        "value": "S256",
+        "type": "string"
+      },
+      {
+        "key": "grant_type",
+        "value": "client_credentials",
+        "type": "string"
+      },
+      {
+        "key": "clientSecret",
+        "value": "{{client_secret}}",
+        "type": "string"
+      },
+      {
+        "key": "clientId",
+        "value": "{{client_id}}",
+        "type": "string"
+      },
+      {
+        "key": "addTokenTo",
+        "value": "header",
+        "type": "string"
+      },
+      {
+        "key": "client_authentication",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "client_id",
+      "value": "[put here your client_id]",
+      "type": "string"
+    },
+    {
+      "key": "client_secret",
+      "value": "[put here your client_secret]",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "[put here your userId]",
+      "type": "string"
+    },
+    {
+      "key": "username",
+      "value": "[put here your username]",
+      "type": "string"
+    },
+    {
+      "key": "password",
+      "value": "[put here your password]",
+      "type": "string"
+    },
+    {
+      "key": "auth_url",
+      "value": "https://api.developer.bankaletihad.com/api/v1/tppa/token",
+      "type": "string"
+    },
+    {
+      "key": "scopes",
+      "value": "identity",
+      "type": "string"
+    }
+  ]
+}
