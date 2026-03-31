@@ -1742,7 +1742,8 @@ def _etihad_tpp_token() -> dict:
     }
     data = {
         "grant_type": "client_credentials",
-        "scope": "accounts",
+        "client_id": ETIHAD_CLIENT_ID.strip(),
+        "scope": "identity accounts",
     }
     
     # Add cert=ETIHAD_MTLS
@@ -1765,7 +1766,7 @@ def _etihad_login_init(*, username: str, password: str, tpp_access_token: str) -
     payload = {
         "Username": username,
         "Password": password,
-        "Scope": "openid ccounts",
+        #"Scope": "openid ccounts",
     }
     r = requests.post(url, headers=headers, json=payload,cert=ETIHAD_MTLS ,timeout=20)
     if r.status_code == 202:
