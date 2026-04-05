@@ -2083,14 +2083,43 @@ def etihad_login_complete(uid: str, body: EtihadLoginCompleteBody, _uid: str = D
 
 @app.get("/banks/etihad/get_customers/{uid}")
 def etihad_get_customers(uid: str, _uid: str = Depends(get_authenticated_uid)):
-    """GET /customers — list all customers with accounts."""
-    access_token = _etihad_ensure_token(uid)
-    headers = _etihad_headers(access_token)
+    """GET /customers — list all customers linked to the app.
+    Uses app token (client_credentials), not user token."""
+    _etihad_require_env()
+    try:
+        tpp = _etihad_tpp_token()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"TPP token error: {e}")
 
+    headers = _etihad_headers(tpp.get("access_token", ""))
     url = f"{ETIHAD_ACCOUNTS_BASE}/customers"
     r = requests.get(url, headers=headers, cert=ETIHAD_MTLS, timeout=25)
     if r.status_code >= 400:
         raise HTTPException(status_code=r.status_code, detail=f"Get customers failed: {r.text[:500]}")
+    return {"status": "success", "data": r.json()}
+
+
+class EtihadCreateAccountBody(BaseModel):
+    currency: str = "JOD"
+    name: str
+
+
+@app.post("/banks/etihad/create_account/{uid}/{customer_id}")
+def etihad_create_account(uid: str, customer_id: str, body: EtihadCreateAccountBody, _uid: str = Depends(get_authenticated_uid)):
+    """POST /customers/{customerId}/accounts — create a new account for a customer."""
+    access_token = _etihad_ensure_token(uid)
+    headers = {
+        **_etihad_headers(access_token),
+        "Content-Type": "application/json",
+        "Idempotency-key": str(uuid.uuid4()),
+    }
+
+    url = f"{ETIHAD_ACCOUNTS_BASE}/customers/{customer_id}/accounts"
+    payload = {"Currency": body.currency, "Name": body.name}
+
+    r = requests.post(url, headers=headers, json=payload, cert=ETIHAD_MTLS, timeout=25)
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"Create account failed: {r.text[:500]}")
     return {"status": "success", "data": r.json()}
 
 
