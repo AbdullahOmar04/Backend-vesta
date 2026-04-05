@@ -6,7 +6,7 @@ import uuid
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.responses import HTMLResponse
-from fastapi.middleware.cors import CORSMiddleware  # ADD THIS
+from fastapi.middleware.cors import CORSMiddleware  
 from pydantic import BaseModel
 import jwt
 import requests
@@ -1730,27 +1730,26 @@ def _etihad_basic_auth_header() -> str:
     return f"Basic {encoded}"
 
 
-def _etihad_tpp_token() -> dict:
-    """Get TPP-level access token via client_credentials grant."""
+def _etihad_tpp_token(scope: str = "identity") -> dict:
+    """Get TPP-level access token via client_credentials grant.
+    scope='identity' for Identity API calls (create user, token2FA).
+    scope='accounts' for Accounts API calls (get customers, accounts, transactions).
+    """
     _etihad_require_env()
     url = f"{ETIHAD_IDENTITY_BASE}/token"
-    
     headers = {
         "Authorization": _etihad_basic_auth_header(),
         "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": "Vesta-Backend/1.0"
+        "User-Agent": "Vesta-Backend/1.0",
     }
     data = {
         "grant_type": "client_credentials",
         "client_id": ETIHAD_CLIENT_ID.strip(),
-        "scope": "identity accounts",
+        "scope": scope,
     }
-    
-    # Add cert=ETIHAD_MTLS
     r = requests.post(url, headers=headers, data=data, cert=ETIHAD_MTLS, timeout=20)
-    
     if r.status_code >= 400:
-        print(f"TPP TOKEN FAIL: {r.status_code} - {r.text}")
+        print(f"TPP TOKEN FAIL ({scope}): {r.status_code} - {r.text}")
     r.raise_for_status()
     return r.json()
 
@@ -1789,7 +1788,7 @@ def _etihad_login_init(*, username: str, password: str, tpp_access_token: str) -
     payload = {
         "Username": username,
         "Password": password,
-        "Scope": "accounts",
+        "Scope": "identity",
     }
     r = requests.post(url, headers=headers, json=payload, cert=ETIHAD_MTLS, timeout=20)
 
@@ -1816,7 +1815,7 @@ def _etihad_login_complete(*, username: str, password: str, otp_code: str, tpp_a
     payload = {
         "Username": username,
         "Password": password,
-        "Scope": "openid accounts",
+        "Scope": "identity",
         "Code": otp_code,
     }
     r = requests.post(url, headers=headers, json=payload, cert=ETIHAD_MTLS, timeout=20)
@@ -2087,7 +2086,7 @@ def etihad_get_customers(uid: str, _uid: str = Depends(get_authenticated_uid)):
     Uses app token (client_credentials), not user token."""
     _etihad_require_env()
     try:
-        tpp = _etihad_tpp_token()
+        tpp = _etihad_tpp_token(scope="accounts")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"TPP token error: {e}")
 
