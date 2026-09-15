@@ -15,7 +15,10 @@ from firebase_admin import auth, credentials, firestore
 import os
 import json
 import uvicorn
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
 
 # --- Firebase Setup ---
 if not firebase_admin._apps:
@@ -2362,6 +2365,721 @@ def etihad_logout(uid: str, _uid: str = Depends(get_authenticated_uid)):
     })
 
     return {"status": "success", "message": "Logged out from Etihad Bank"}
+
+#####################################################HOUSING BANK (HBTF) ##########################################################
+# Housing Bank runs its own Open Banking platform (not FINX Comply).
+# Auth is three legs:
+#   1. client_credentials -> access token   (TPP-level, for /consent/* and /institution/*)
+#   2. customer approves consent in the Iskan mobile app via a deep link
+#   3. consent token       -> used for all AIS calls (/accounts, balances, transactions)
+# Every consent/AIS call must also carry a JAdES Baseline-B detached JWS signature.
+
+HBTF_CLIENT_ID = os.getenv("HBTF_CLIENT_ID", "")
+HBTF_CLIENT_SECRET = os.getenv("HBTF_CLIENT_SECRET", "")
+HBTF_API_BASE = os.getenv("HBTF_API_BASE", "https://sandbox.openbanking.hbtf.com").rstrip("/")
+# The token endpoint lives on a different host than the data APIs
+HBTF_OAUTH_BASE = os.getenv("HBTF_OAUTH_BASE", "https://oauth.openbanking.hbtf.com").rstrip("/")
+HBTF_SCOPE = os.getenv("HBTF_SCOPE", "openid")
+
+# JAdES signing material — the key you generated locally plus the cert the portal signed
+HBTF_JADES_KEY_FILE = os.getenv("HBTF_JADES_KEY_FILE", "hbtf_jades_private.key")
+HBTF_JADES_KEY_PEM = os.getenv("HBTF_JADES_KEY_PEM", "")        # inline PEM alternative (Render)
+HBTF_JADES_CERT_FILE = os.getenv("HBTF_JADES_CERT_FILE", "hbtf-jades-cert.pem")
+HBTF_CERT_THUMBPRINT = os.getenv("HBTF_CERT_THUMBPRINT", "")    # skips reading the cert file if set
+# HBTF's docs contradict themselves: the prose example sets b64=true, their reference
+# Java client sets false. False matches the working reference; flip via env if the bank rejects.
+HBTF_JADES_B64 = os.getenv("HBTF_JADES_B64", "false").strip().lower() == "true"
+
+# The portal signs two separate certificates off two separate CSRs: a JAdES one
+# (above, used only for the x5t#S256 thumbprint) and an mTLS one (clientAuth EKU)
+# that authenticates the TLS connection itself. They are not interchangeable.
+# One CSR can be submitted twice to get both certificate types, so the key file
+# defaults to the same pair unless a separate mTLS key was generated.
+HBTF_MTLS_CERT_FILE = os.getenv("HBTF_MTLS_CERT_FILE", "hbtf-mtls-cert.pem")
+HBTF_MTLS_KEY_FILE = os.getenv("HBTF_MTLS_KEY_FILE", HBTF_JADES_KEY_FILE)
+HBTF_MTLS = (HBTF_MTLS_CERT_FILE, HBTF_MTLS_KEY_FILE)
+
+HBTF_PROVIDER_KEY = "hbtf"
+HBTF_PROVIDER_LABEL = "Housing Bank"
+HBTF_SANDBOX = "hbtf"
+
+
+# ----------------------------
+# HBTF Helpers
+# ----------------------------
+def _hbtf_require_env() -> None:
+    missing = []
+    if not HBTF_CLIENT_ID: missing.append("HBTF_CLIENT_ID")
+    if not HBTF_CLIENT_SECRET: missing.append("HBTF_CLIENT_SECRET")
+    if missing:
+        raise HTTPException(status_code=500, detail=f"Missing env vars: {', '.join(missing)}")
+
+
+def _hbtf_basic_auth_header() -> str:
+    """Basic Auth header for /oauth2/token: base64(client_id:client_secret)."""
+    creds = f"{HBTF_CLIENT_ID}:{HBTF_CLIENT_SECRET}"
+    return "Basic " + base64.b64encode(creds.encode()).decode()
+
+
+# --- JAdES Baseline-B request signing ---
+_hbtf_key_cache = None
+_hbtf_thumbprint_cache = None
+
+
+def _hbtf_private_key():
+    """Load and cache the RSA private key used to sign requests."""
+    global _hbtf_key_cache
+    if _hbtf_key_cache is not None:
+        return _hbtf_key_cache
+
+    if HBTF_JADES_KEY_PEM.strip():
+        pem_bytes = HBTF_JADES_KEY_PEM.encode()
+    else:
+        try:
+            with open(HBTF_JADES_KEY_FILE, "rb") as fh:
+                pem_bytes = fh.read()
+        except OSError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"HBTF signing key unreadable at {HBTF_JADES_KEY_FILE}: {e}",
+            )
+
+    try:
+        _hbtf_key_cache = serialization.load_pem_private_key(pem_bytes, password=None)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"HBTF signing key is not a valid PEM private key: {e}")
+    return _hbtf_key_cache
+
+
+def _hbtf_thumbprint() -> str:
+    """x5t#S256 — base64url(SHA-256(DER cert)), unpadded."""
+    global _hbtf_thumbprint_cache
+    if HBTF_CERT_THUMBPRINT:
+        return HBTF_CERT_THUMBPRINT
+    if _hbtf_thumbprint_cache:
+        return _hbtf_thumbprint_cache
+
+    try:
+        with open(HBTF_JADES_CERT_FILE, "rb") as fh:
+            cert_bytes = fh.read()
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"HBTF signed certificate not found at {HBTF_JADES_CERT_FILE}. "
+                f"Download it from the portal after the CSR is signed, or set HBTF_CERT_THUMBPRINT. ({e})"
+            ),
+        )
+
+    cert = x509.load_pem_x509_certificate(cert_bytes)
+    der = cert.public_bytes(serialization.Encoding.DER)
+    _hbtf_thumbprint_cache = _b64url(hashlib.sha256(der).digest())
+    return _hbtf_thumbprint_cache
+
+
+def _hbtf_digest(body: str) -> str:
+    """Digest header value: standard (not url-safe) base64 of the SHA-256 body hash."""
+    return "SHA-256=" + base64.b64encode(hashlib.sha256(body.encode()).digest()).decode()
+
+
+def _hbtf_par_values(method: str, url: str, body: str | None, pars: list[str]) -> dict:
+    """Resolve each signed-header name to the value that gets hashed and canonicalised."""
+    parsed = urlparse(url)
+    target = parsed.path + (f"?{parsed.query}" if parsed.query else "")
+
+    values = {
+        "(request-target)": f"{method.lower()} {target}",
+        "host": parsed.hostname or "",
+        "content-type": "application/json",
+    }
+    if body is not None:
+        values["digest"] = _hbtf_digest(body)
+    return {p: values[p] for p in pars if p in values}
+
+
+def _hbtf_jades_signature(method: str, url: str, body: str | None = None,
+                          pars: list[str] | None = None) -> str:
+    """Build the X-Jws-Signature value: a detached JWS of `header..signature`.
+
+    The signing input is base64url(protectedHeader) + "." + canonicalString, matching
+    HBTF's reference client. `url` must be the fully-prepared URL including the query
+    string, since (request-target) covers it — signing a differently-encoded URL than
+    the one sent produces a valid signature the bank will reject.
+    """
+    if pars is None:
+        # Mirrors HBTF's reference client: bodyless GETs sign only target + host.
+        pars = ["(request-target)", "host", "digest", "content-type"] if body is not None \
+            else ["(request-target)", "host"]
+
+    values = _hbtf_par_values(method, url, body, pars)
+    ordered = [p for p in pars if p in values]
+
+    canonical = "\n".join(f"{p}: {values[p]}" for p in ordered)
+
+    protected = {
+        "alg": "RS256",
+        "b64": HBTF_JADES_B64,
+        "crit": ["sigT", "sigD", "b64"],
+        "sigT": _iso(_utc_now()),
+        "sigD": {
+            "pars": ordered,
+            "mId": "http://uri.etsi.org/19182/HttpHeaders",
+            "hashM": "S256",
+            "hashV": [_b64url(hashlib.sha256(values[p].encode()).digest()) for p in ordered],
+        },
+        "x5t#S256": _hbtf_thumbprint(),
+    }
+
+    encoded_header = _b64url(json.dumps(protected, separators=(",", ":")).encode())
+    signing_input = f"{encoded_header}.{canonical}".encode()
+
+    signature = _hbtf_private_key().sign(signing_input, padding.PKCS1v15(), hashes.SHA256())
+    return f"{encoded_header}..{_b64url(signature)}"
+
+
+def _hbtf_signed_request(method: str, path: str, *, token: str, params: dict | None = None,
+                         body: dict | None = None, interactions_id: bool = False) -> requests.Response:
+    """Send a JAdES-signed request to the HBTF data API.
+
+    The request is prepared first so the signature can cover the exact URL that goes
+    out on the wire, query encoding included.
+    """
+    body_str = json.dumps(body, separators=(",", ":")) if body is not None else None
+
+    for label, f in (("certificate", HBTF_MTLS_CERT_FILE), ("private key", HBTF_MTLS_KEY_FILE)):
+        if not os.path.exists(f):
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"HBTF mTLS {label} not found at {f}. Upload a CSR to the portal with "
+                    f"Certificate Type: mTLS, then download the signed certificate. This is a "
+                    f"different certificate from the JAdES signing one."
+                ),
+            )
+
+    session = requests.Session()
+    prepped = session.prepare_request(
+        requests.Request(method.upper(), f"{HBTF_API_BASE}{path}", params=params or None, data=body_str)
+    )
+
+    prepped.headers["Authorization"] = f"Bearer {token}"
+    prepped.headers["Accept"] = "application/json"
+    if body_str is not None:
+        prepped.headers["Content-Type"] = "application/json"
+        prepped.headers["Digest"] = _hbtf_digest(body_str)
+    if interactions_id:
+        prepped.headers["X-Interactions-Id"] = str(uuid.uuid4())
+    prepped.headers["X-Jws-Signature"] = _hbtf_jades_signature(method, prepped.url, body_str)
+
+    return session.send(prepped, timeout=25, cert=HBTF_MTLS)
+
+
+_hbtf_token_cache: dict = {}
+
+
+def _hbtf_access_token() -> str:
+    """TPP-level access token via client_credentials, cached until just before expiry."""
+    _hbtf_require_env()
+
+    cached = _hbtf_token_cache.get("access_token")
+    expires_at = _hbtf_token_cache.get("expires_at")
+    if cached and expires_at and expires_at > (_utc_now() + timedelta(seconds=60)):
+        return cached
+
+    url = f"{HBTF_OAUTH_BASE}/oauth2/token"
+    headers = {
+        "Authorization": _hbtf_basic_auth_header(),
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+    data = {"grant_type": "client_credentials", "scope": HBTF_SCOPE}
+
+    r = requests.post(url, headers=headers, data=data, timeout=20)
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"HBTF access token failed: {r.text[:500]}")
+
+    payload = r.json()
+    token = payload.get("access_token")
+    if not token:
+        raise HTTPException(status_code=502, detail="HBTF token response missing access_token")
+
+    ttl = int(payload.get("expires_in") or 0)
+    _hbtf_token_cache["access_token"] = token
+    _hbtf_token_cache["expires_at"] = _utc_now() + timedelta(seconds=max(ttl, 0))
+    return token
+
+
+# --- Firestore helpers ---
+def _hbtf_providers_ref(uid: str):
+    return db.collection("users").document(uid)
+
+
+def _hbtf_write_provider_state(uid: str, data: dict):
+    _hbtf_providers_ref(uid).set({"providers": {HBTF_PROVIDER_KEY: data}}, merge=True)
+
+
+def _hbtf_read_provider_state(uid: str) -> dict:
+    snap = _hbtf_providers_ref(uid).get()
+    d = snap.to_dict() or {}
+    return ((d.get("providers") or {}).get(HBTF_PROVIDER_KEY) or {})
+
+
+def _hbtf_ensure_consent_token(uid: str) -> str:
+    """Load the stored consent token. HBTF issues no refresh token — an expired
+    consent means the customer has to authorise a new one in the Iskan app."""
+    st = _hbtf_read_provider_state(uid)
+    tokens = st.get("tokens") or {}
+    consent_token = tokens.get("consent_token")
+    expires_at = tokens.get("expires_at")
+
+    if not consent_token:
+        raise HTTPException(
+            status_code=400,
+            detail="Housing Bank not linked yet. Initiate a consent and approve it in the Iskan app first.",
+        )
+
+    if expires_at:
+        try:
+            exp = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        except Exception:
+            return consent_token
+        if exp <= _utc_now():
+            raise HTTPException(
+                status_code=401,
+                detail="Housing Bank consent expired. Initiate a new consent.",
+            )
+
+    return consent_token
+
+
+def _hbtf_normalize_account(a: dict) -> dict:
+    """Flatten HBTF's account shape into the fields the app actually uses."""
+    acct_type = a.get("accountType") or {}
+    available = a.get("availableBalance") or {}
+    return {
+        "accountId": a.get("accountId"),
+        "currency": a.get("accountCurrency"),
+        "status": a.get("accountStatus"),
+        "typeCode": acct_type.get("code"),
+        "typeName": acct_type.get("name"),
+        "holderType": a.get("accountHolderType"),
+        "availableBalance": available.get("amount"),
+        "openingDate": a.get("openingDate"),
+        "provider": HBTF_PROVIDER_KEY,
+        "providerLabel": HBTF_PROVIDER_LABEL,
+    }
+
+
+def _hbtf_normalize_transaction(t: dict, acct_id: str) -> dict:
+    """Flatten an HBTF transaction into the shape the other providers store."""
+    amount = t.get("transactionAmount") or {}
+    channel = t.get("transactionChannel") or {}
+    instrument = t.get("instrument") or {}
+
+    direction = "credit" if (t.get("transactionType") or "").lower() == "credit" else "debit"
+
+    # HBTF has no free-text narrative field. Prefer the merchant, then the other party
+    # (the creditor on a debit, the debtor on a credit), then channel/instrument codes.
+    merchant = ((t.get("merchantDetails") or {}).get("merchantName") or {}).get("enName")
+    party, personal = ("creditor", "creditorPersonal") if direction == "debit" else ("debtor", "debtorPersonal")
+    counterparty = ((t.get(party) or {}).get(personal) or {}).get("name")
+    description = merchant or counterparty or " ".join(
+        p for p in [channel.get("name"), instrument.get("code"), t.get("transactionTypeCode")] if p
+    )
+
+    return {
+        "accountId": acct_id,
+        "transactionId": t.get("transactionId"),
+        "amount": amount.get("amount"),
+        "currency": amount.get("currency"),
+        "type": direction,
+        "status": t.get("transactionStatus"),
+        "typeCode": t.get("transactionTypeCode") or None,  # sandbox sends "" rather than omitting it
+        "channelCode": channel.get("code"),
+        "channelName": channel.get("name"),
+        "instrumentCode": instrument.get("code"),
+        "instrumentUid": instrument.get("uid"),
+        "date": t.get("settlementDateTime") or t.get("presentementDateTime"),
+        "valueDate": t.get("presentementDateTime"),
+        "description": description or None,
+    }
+
+
+def _hbtf_chunks(items: list, size: int):
+    """Firestore batches cap at 500 writes, so commit in slices."""
+    for i in range(0, len(items), size):
+        yield items[i:i + size]
+
+
+def _hbtf_paginate(path: str, *, token: str, params: dict,
+                   page_size: int = 100, max_pages: int = 50) -> list:
+    """Walk HBTF's skip/limit pages until it stops returning a full page.
+
+    max_pages is a safety stop so a misbehaving cursor can't loop forever.
+    """
+    out: list = []
+    skip = 0
+
+    for _ in range(max_pages):
+        r = _hbtf_signed_request(
+            "GET", path, token=token,
+            params={**params, "skip": skip, "limit": page_size},
+            interactions_id=True,
+        )
+        if r.status_code >= 400:
+            if skip == 0:
+                raise HTTPException(status_code=r.status_code, detail=f"HBTF {path} failed: {r.text[:500]}")
+            break  # partial data already collected — stop rather than lose it
+
+        rows = (r.json() or {}).get("data") or []
+        if not rows:
+            break
+
+        out.extend(rows)
+        if len(rows) < page_size:
+            break
+        skip += page_size
+
+    return out
+
+
+# ----------------------------
+# HBTF ENDPOINTS
+# ----------------------------
+
+class HbtfConsentInitBody(BaseModel):
+    customer_type: str = "RETAIL"   # RETAIL | CORPORATE
+    device_type: str = "Android"    # Android | IOS | Huawei
+    metadata: dict | None = None
+
+
+@app.post("/banks/hbtf/consent/initiate/{uid}")
+def hbtf_consent_initiate(uid: str, body: HbtfConsentInitBody, _uid: str = Depends(get_authenticated_uid)):
+    """POST /consent/initiate — returns a consentId plus Iskan deep links.
+
+    There is no web callback: the client opens the deep link so the customer can
+    approve in the Iskan app, then calls /banks/hbtf/consent/token/{uid}.
+    """
+    token = _hbtf_access_token()
+
+    payload = {"customerType": body.customer_type, "deviceType": body.device_type}
+    if body.metadata:
+        payload["metadata"] = body.metadata
+
+    r = _hbtf_signed_request("POST", "/consent/initiate", token=token, body=payload)
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"HBTF consent initiate failed: {r.text[:500]}")
+
+    data = r.json()
+    consent_id = data.get("consentId")
+    if not consent_id:
+        raise HTTPException(status_code=502, detail="HBTF consent response missing consentId")
+
+    _hbtf_write_provider_state(uid, {
+        "sandbox": HBTF_SANDBOX,
+        "linked": False,
+        "consent": {
+            "consent_id": consent_id,
+            "status": data.get("status"),
+            "permissions": data.get("permissions") or [],
+            "from": data.get("consentFromDateTime"),
+            "to": data.get("consentToDateTime"),
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        },
+    })
+
+    return {
+        "status": "success",
+        "consent_id": consent_id,
+        "consent_status": data.get("status"),
+        "links": data.get("links") or [],
+        "data": data,
+    }
+
+
+@app.post("/banks/hbtf/consent/token/{uid}")
+def hbtf_consent_token(uid: str, _uid: str = Depends(get_authenticated_uid)):
+    """POST /consent/{consentId}/token — exchange an authorised consent for a consent token.
+
+    HBTF exposes no consent-status endpoint, so this doubles as the status check: it
+    fails with http.auth.consent.not_authorised until the customer approves in Iskan.
+    """
+    st = _hbtf_read_provider_state(uid)
+    consent_id = ((st.get("consent") or {}).get("consent_id"))
+    if not consent_id:
+        raise HTTPException(status_code=400, detail="No HBTF consent on file. Initiate a consent first.")
+
+    token = _hbtf_access_token()
+    r = _hbtf_signed_request("POST", f"/consent/{consent_id}/token", token=token)
+    if r.status_code >= 400:
+        raise HTTPException(
+            status_code=r.status_code,
+            detail=f"HBTF consent token failed (customer may not have approved yet): {r.text[:500]}",
+        )
+
+    payload = r.json()
+    consent_token = payload.get("access_token")
+    if not consent_token:
+        raise HTTPException(status_code=502, detail="HBTF consent token response missing access_token")
+
+    ttl = int(payload.get("expires_in") or 0)
+    expires_at = _utc_now() + timedelta(seconds=max(ttl, 0))
+
+    _hbtf_write_provider_state(uid, {
+        "sandbox": HBTF_SANDBOX,
+        "linked": True,
+        "consent": {"consent_id": consent_id, "status": "Authorised"},
+        "tokens": {
+            "consent_token": consent_token,
+            "expires_at": _iso(expires_at),
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        },
+    })
+
+    return {"status": "success", "expires_at": _iso(expires_at)}
+
+
+@app.get("/banks/hbtf/get_accounts/{uid}")
+def hbtf_get_accounts(
+    uid: str,
+    skip: int = 0,
+    limit: int = 50,
+    account_type: str | None = None,
+    account_status: str | None = None,
+    sort: str | None = None,
+    _uid: str = Depends(get_authenticated_uid),
+):
+    """GET /accounts — list the customer's accounts. Requires a consent token."""
+    consent_token = _hbtf_ensure_consent_token(uid)
+
+    params: dict = {"skip": skip, "limit": limit}
+    if account_type:
+        params["accountType"] = account_type
+    if account_status:
+        params["accountStatus"] = account_status
+    if sort:
+        params["sort"] = sort
+
+    r = _hbtf_signed_request("GET", "/accounts", token=consent_token, params=params, interactions_id=True)
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"HBTF get accounts failed: {r.text[:500]}")
+
+    payload = r.json()
+    accounts = payload.get("data") or []
+
+    return {
+        "status": "success",
+        "count": len(accounts),
+        "accounts": [_hbtf_normalize_account(a) for a in accounts],
+        "paging": payload.get("_links") or {},
+    }
+
+
+@app.get("/banks/hbtf/get_balances/{uid}/{account_id}")
+def hbtf_get_balances(uid: str, account_id: str, _uid: str = Depends(get_authenticated_uid)):
+    """GET /accounts/{accountId}/balances — every balance type for one account."""
+    consent_token = _hbtf_ensure_consent_token(uid)
+
+    r = _hbtf_signed_request("GET", f"/accounts/{account_id}/balances",
+                             token=consent_token, interactions_id=True)
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"HBTF get balances failed: {r.text[:500]}")
+
+    rows = (r.json() or {}).get("data") or []
+
+    # HBTF returns one row per balance type (Available, Current, ...) — key them for the client
+    by_type = {}
+    for b in rows:
+        amount = b.get("amount") or {}
+        if b.get("type"):
+            by_type[b["type"]] = {
+                "amount": amount.get("amount"),
+                "currency": amount.get("currency"),
+                "creditDebitIndicator": b.get("creditDebitIndicator"),
+                "dateTime": b.get("dateTime"),
+            }
+
+    return {"status": "success", "accountId": account_id, "balances": by_type, "raw": rows}
+
+
+@app.get("/banks/hbtf/get_transactions/{uid}/{account_id}")
+def hbtf_get_transactions(
+    uid: str,
+    account_id: str,
+    skip: int = 0,
+    limit: int = 50,
+    transaction_type: str | None = None,
+    transaction_status: str | None = None,
+    transaction_currency: str | None = None,
+    instrument_code: str | None = None,
+    settlement_date_from: str | None = None,
+    settlement_date_to: str | None = None,
+    sort: str | None = None,
+    _uid: str = Depends(get_authenticated_uid),
+):
+    """GET /accounts/{accountId}/transactions — one page of transactions."""
+    consent_token = _hbtf_ensure_consent_token(uid)
+
+    params: dict = {"skip": skip, "limit": limit}
+    for key, value in (
+        ("transactionType", transaction_type),
+        ("transactionStatus", transaction_status),
+        ("transactionCurrency", transaction_currency),
+        ("instrumentCode", instrument_code),
+        ("settlementDateFrom", settlement_date_from),
+        ("settlementDateTo", settlement_date_to),
+        ("sort", sort),
+    ):
+        if value:
+            params[key] = value
+
+    r = _hbtf_signed_request("GET", f"/accounts/{account_id}/transactions",
+                             token=consent_token, params=params, interactions_id=True)
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"HBTF get transactions failed: {r.text[:500]}")
+
+    payload = r.json()
+    rows = payload.get("data") or []
+
+    return {
+        "status": "success",
+        "count": len(rows),
+        "transactions": [_hbtf_normalize_transaction(t, f"hbtf_{account_id}") for t in rows],
+        "paging": payload.get("_links") or {},
+    }
+
+
+@app.post("/banks/hbtf/sync_accounts/{uid}")
+def hbtf_sync_accounts(uid: str, _uid: str = Depends(get_authenticated_uid)):
+    """Fetch every HBTF account and sync it into users/{uid}/accounts.
+
+    Field names match what the app reads for the other banks (balanceAmount,
+    accountTypeName, iban), and an account the user already linked stays linked.
+    """
+    consent_token = _hbtf_ensure_consent_token(uid)
+    accounts = _hbtf_paginate("/accounts", token=consent_token, params={})
+
+    acct_ref = db.collection("users").document(uid).collection("accounts")
+
+    # Same approach as Ahli: remember linked accounts, drop stale unlinked ones
+    linked_ids = set()
+    for doc in acct_ref.stream():
+        d = doc.to_dict() or {}
+        if d.get("provider") == HBTF_PROVIDER_LABEL and d.get("sandbox") == HBTF_SANDBOX:
+            if d.get("linked") is True:
+                linked_ids.add(doc.id)
+            else:
+                doc.reference.delete()
+
+    count = 0
+    for chunk in _hbtf_chunks(accounts, 400):
+        batch = db.batch()
+        for acct in chunk:
+            number = str(acct.get("accountId") or "").strip()
+            if not number:
+                continue
+
+            doc_id = f"hbtf_{number}"
+            acc_type = acct.get("accountType") or {}
+            raw_bal = (acct.get("availableBalance") or {}).get("amount")
+            try:
+                balance = float(raw_bal) if raw_bal is not None else 0.0
+            except (TypeError, ValueError):
+                balance = 0.0
+
+            acc_doc = {
+                "accountId": doc_id,
+                "accountNumber": number,  # raw number, used in the sync_transactions path
+                "provider": HBTF_PROVIDER_LABEL,
+                "sandbox": HBTF_SANDBOX,
+                "bankName": HBTF_PROVIDER_LABEL,
+                "accountTypeCode": acc_type.get("code", ""),
+                "accountTypeName": acc_type.get("name", ""),
+                "balanceAmount": balance,
+                "currency": acct.get("accountCurrency") or "JOD",
+                "iban": (acct.get("mainRoute") or {}).get("address") or "",
+                "accountStatus": acct.get("accountStatus", ""),
+                "holderType": acct.get("accountHolderType"),
+                "openingDate": acct.get("openingDate"),
+                "branch": ((acct.get("branchBasicInfo") or {}).get("name") or {}).get("enName"),
+                "lockedForDebit": bool(acct.get("lockedForDebit", False)),
+                "isSharedAccount": bool(acct.get("sharedAccount", False)),
+                "source": "openBanking",
+                "raw": acct,
+                "syncedAt": firestore.SERVER_TIMESTAMP,
+            }
+            if doc_id not in linked_ids:
+                acc_doc["linked"] = False
+
+            batch.set(acct_ref.document(doc_id), acc_doc, merge=True)
+            count += 1
+        batch.commit()
+
+    return {"status": "success", "accounts_synced": count}
+
+
+@app.post("/banks/hbtf/sync_transactions/{uid}/{account_id}")
+def hbtf_sync_transactions(
+    uid: str,
+    account_id: str,
+    settlement_date_from: str | None = None,
+    settlement_date_to: str | None = None,
+    _uid: str = Depends(get_authenticated_uid),
+):
+    """Fetch every transaction for an account and sync into
+    users/{uid}/accounts/hbtf_{account_id}/transactions, where the app reads them.
+
+    account_id is the raw account number, not the hbtf_ Firestore doc id.
+    """
+    consent_token = _hbtf_ensure_consent_token(uid)
+
+    params: dict = {}
+    if settlement_date_from:
+        params["settlementDateFrom"] = settlement_date_from
+    if settlement_date_to:
+        params["settlementDateTo"] = settlement_date_to
+
+    rows = _hbtf_paginate(f"/accounts/{account_id}/transactions", token=consent_token, params=params)
+
+    acct_id = f"hbtf_{account_id}"
+    tx_ref = (
+        db.collection("users")
+          .document(uid)
+          .collection("accounts")
+          .document(acct_id)
+          .collection("transactions")
+    )
+    # Skip transactions already stored so the user's category/household edits survive a re-sync
+    existing_ids = {doc.id for doc in tx_ref.stream()}
+    count = 0
+
+    for chunk in _hbtf_chunks(rows, 400):
+        batch = db.batch()
+        for tx in chunk:
+            raw_id = tx.get("transactionId")
+            if raw_id:
+                tx_id = f"hbtf_{raw_id}".replace("/", "_")
+            else:
+                seed = f"{account_id}_{tx.get('settlementDateTime')}_{(tx.get('transactionAmount') or {}).get('amount')}"
+                tx_id = f"hbtf_{hashlib.sha256(seed.encode()).hexdigest()[:20]}"
+
+            if tx_id in existing_ids:
+                continue
+
+            doc_data = _hbtf_normalize_transaction(tx, acct_id)
+            doc_data.update({
+                "source": "openBanking",
+                "category": None,
+                "provider": HBTF_PROVIDER_LABEL,
+                "sandbox": HBTF_SANDBOX,
+                "raw": tx,
+                "syncedAt": firestore.SERVER_TIMESTAMP,
+            })
+
+            batch.set(tx_ref.document(tx_id), doc_data, merge=False)
+            count += 1
+        batch.commit()
+
+    return {"status": "success", "transactions_synced": count}
 
 
 if __name__ == "__main__":

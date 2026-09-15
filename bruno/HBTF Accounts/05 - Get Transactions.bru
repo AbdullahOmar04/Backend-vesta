@@ -1,0 +1,21 @@
+meta {
+  name: 05 - Get Transactions
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{base_url}}/banks/hbtf/get_transactions/{{uid}}/{{account_id}}?skip=0&limit=50
+  body: none
+  auth: inherit
+}
+
+params:query {
+  skip: 0
+  limit: 50
+}
+
+docs {
+  One page of transactions for the account. Use sync_accounts / sync_transactions
+  (below) to persist into Firestore instead of just reading a page.
+}
