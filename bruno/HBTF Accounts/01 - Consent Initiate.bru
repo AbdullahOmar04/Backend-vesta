@@ -1,0 +1,24 @@
+meta {
+  name: 01 - Consent Initiate
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base_url}}/banks/hbtf/consent/initiate/{{uid}}
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "customer_type": "RETAIL",
+    "device_type": "Android"
+  }
+}
+
+docs {
+  Returns a consentId plus Iskan deep links. Open the deep link (or the sandbox's
+  equivalent approval step) to authorise the consent before calling step 02.
+  Saves consent_id into users/{uid}/providers/hbtf in Firestore automatically.
+}

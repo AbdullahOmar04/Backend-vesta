@@ -1,0 +1,18 @@
+meta {
+  name: 02 - Consent Token
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{base_url}}/banks/hbtf/consent/token/{{uid}}
+  body: none
+  auth: inherit
+}
+
+docs {
+  Exchanges the authorised consent for a consent token, stored server-side.
+  This also doubles as the "is it approved yet" check: it 400s with
+  http.auth.consent.not_authorised until the customer approves in the Iskan app.
+  Run 01 first for the same uid.
+}

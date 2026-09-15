@@ -1,0 +1,16 @@
+meta {
+  name: 07 - Sync Transactions
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{base_url}}/banks/hbtf/sync_transactions/{{uid}}/{{account_id}}
+  body: none
+  auth: inherit
+}
+
+docs {
+  Fetches every transaction for the account and writes it into
+  users/{uid}/transactions in Firestore.
+}

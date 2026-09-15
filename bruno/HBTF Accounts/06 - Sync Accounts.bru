@@ -1,0 +1,15 @@
+meta {
+  name: 06 - Sync Accounts
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{base_url}}/banks/hbtf/sync_accounts/{{uid}}
+  body: none
+  auth: inherit
+}
+
+docs {
+  Fetches every HBTF account and writes it into users/{uid}/accounts in Firestore.
+}

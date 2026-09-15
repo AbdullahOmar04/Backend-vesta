@@ -1,0 +1,24 @@
+meta {
+  name: 03 - Get Accounts
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{base_url}}/banks/hbtf/get_accounts/{{uid}}?skip=0&limit=50
+  body: none
+  auth: inherit
+}
+
+params:query {
+  skip: 0
+  limit: 50
+  ~account_type: 
+  ~account_status: 
+  ~sort: 
+}
+
+docs {
+  Requires a consent token already stored (step 02 must have succeeded).
+  Returns the account list; grab an accountId from here for 04/05.
+}

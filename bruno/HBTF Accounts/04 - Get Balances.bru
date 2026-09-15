@@ -1,0 +1,16 @@
+meta {
+  name: 04 - Get Balances
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{base_url}}/banks/hbtf/get_balances/{{uid}}/{{account_id}}
+  body: none
+  auth: inherit
+}
+
+docs {
+  Set account_id in the environment (or override here) to an accountId
+  returned by 03.
+}
