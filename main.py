@@ -14,6 +14,7 @@ import firebase_admin
 from firebase_admin import auth, credentials, firestore
 import os
 import json
+import tempfile
 import uvicorn
 from urllib.parse import urlencode, urlparse
 from cryptography import x509
@@ -2390,13 +2391,40 @@ HBTF_CERT_THUMBPRINT = os.getenv("HBTF_CERT_THUMBPRINT", "")    # skips reading 
 # Java client sets false. False matches the working reference; flip via env if the bank rejects.
 HBTF_JADES_B64 = os.getenv("HBTF_JADES_B64", "false").strip().lower() == "true"
 
+def _pem_path_from_env(pem_vars: tuple[str, ...], path_value: str) -> str:
+    """Return a readable path to a PEM, materialising it into a temp file if needed.
+
+    Render mounts these as secret files, but Vercel has no such feature — there the
+    PEM travels in an env var and openssl/requests still need a real path on disk.
+    Falls back to path_value when no PEM var is set.
+    """
+    pem = next((os.getenv(v, "") for v in pem_vars if os.getenv(v, "").strip()), "")
+    if not pem.strip():
+        return path_value
+
+    target = os.path.join(tempfile.gettempdir(), os.path.basename(path_value))
+    if not os.path.exists(target):
+        # Env vars set through a web UI often arrive with literal \n instead of newlines
+        with open(target, "w", encoding="utf-8") as fh:
+            fh.write(pem.replace("\\n", "\n"))
+    return target
+
+
 # The portal signs two separate certificates off two separate CSRs: a JAdES one
 # (above, used only for the x5t#S256 thumbprint) and an mTLS one (clientAuth EKU)
 # that authenticates the TLS connection itself. They are not interchangeable.
 # One CSR can be submitted twice to get both certificate types, so the key file
 # defaults to the same pair unless a separate mTLS key was generated.
-HBTF_MTLS_CERT_FILE = os.getenv("HBTF_MTLS_CERT_FILE", "hbtf-mtls-cert.pem")
-HBTF_MTLS_KEY_FILE = os.getenv("HBTF_MTLS_KEY_FILE", HBTF_JADES_KEY_FILE)
+HBTF_JADES_CERT_FILE = _pem_path_from_env(("HBTF_JADES_CERT_PEM",), HBTF_JADES_CERT_FILE)
+HBTF_MTLS_CERT_FILE = _pem_path_from_env(
+    ("HBTF_MTLS_CERT_PEM",), os.getenv("HBTF_MTLS_CERT_FILE", "hbtf-mtls-cert.pem")
+)
+# mTLS needs the key as a file even when signing reads it inline, so accept the
+# JAdES PEM as a fallback — by default both certificates share one key pair.
+HBTF_MTLS_KEY_FILE = _pem_path_from_env(
+    ("HBTF_MTLS_KEY_PEM", "HBTF_JADES_KEY_PEM"),
+    os.getenv("HBTF_MTLS_KEY_FILE", HBTF_JADES_KEY_FILE),
+)
 HBTF_MTLS = (HBTF_MTLS_CERT_FILE, HBTF_MTLS_KEY_FILE)
 
 HBTF_PROVIDER_KEY = "hbtf"
