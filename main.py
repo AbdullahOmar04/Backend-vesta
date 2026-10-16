@@ -563,20 +563,57 @@ def _refresh_psu_token(openid_conf: dict, *, refresh_token: str) -> dict:
     r.raise_for_status()
     return r.json()
 
-def _providers_ref(uid: str):
-    return db.collection("users").document(uid)
+# --- Bank link state ---
+# Each bank's tokens, consents and OAuth state live in
+# bankSecrets/{uid}/providers/{provider}, which no security rule opens to the
+# app. The app reads only users/{uid}/bankLinks/{provider}: whether the bank is
+# linked, until when, and the consent status. Neither lives in users/{uid}
+# itself: every screen streams that doc, and the bank blob there made Firestore
+# spend seconds re-diffing it on every change.
+
+def _bank_secret_ref(uid: str, provider: str):
+    return db.collection("bankSecrets").document(uid).collection("providers").document(provider)
+
+
+def _bank_status_ref(uid: str, provider: str):
+    return db.collection("users").document(uid).collection("bankLinks").document(provider)
+
+
+def _bank_status_fields(data: dict) -> dict:
+    """The parts of a provider state write that the app may see."""
+    status = {}
+    if "linked" in data:
+        status["linked"] = bool(data["linked"])
+    expires_at = (data.get("tokens") or {}).get("expires_at")
+    if expires_at is not None:
+        status["expiresAt"] = expires_at
+    consent_status = (data.get("consent") or {}).get("status")
+    if consent_status is not None:
+        status["consentStatus"] = consent_status
+    return status
+
+
+def _write_bank_state(uid: str, provider: str, data: dict):
+    """Merge `data` into the provider's secret state, and mirror the app-visible
+    parts into its status doc in the same batch."""
+    batch = db.batch()
+    batch.set(_bank_secret_ref(uid, provider), data, merge=True)
+    status = _bank_status_fields(data)
+    if status:
+        status["updatedAt"] = firestore.SERVER_TIMESTAMP
+        batch.set(_bank_status_ref(uid, provider), status, merge=True)
+    batch.commit()
+
+
+def _read_bank_state(uid: str, provider: str) -> dict:
+    return _bank_secret_ref(uid, provider).get().to_dict() or {}
+
 
 def _write_provider_state(uid: str, data: dict):
-    user_ref = _providers_ref(uid)
-    user_ref.set(
-        {"providers": {AHLI_PROVIDER_KEY: data}},
-        merge=True
-    )
+    _write_bank_state(uid, AHLI_PROVIDER_KEY, data)
 
 def _read_provider_state(uid: str) -> dict:
-    snap = _providers_ref(uid).get()
-    d = snap.to_dict() or {}
-    return ((d.get("providers") or {}).get(AHLI_PROVIDER_KEY) or {})
+    return _read_bank_state(uid, AHLI_PROVIDER_KEY)
 
 def _ensure_psu_access_token(uid: str) -> str:
     """
@@ -849,16 +886,12 @@ def _ahli_sync_accounts_internal(uid: str) -> dict:
 
     # update user totals for this provider (keep it provider-scoped to avoid mixing with JoPACC totals)
     batch.set(
-        user_ref,
+        _bank_status_ref(uid, AHLI_PROVIDER_KEY),
         {
-            "providers": {
-                AHLI_PROVIDER_KEY: {
-                    "totals": {
-                        "totalBalance": total_balance,
-                        "currency": currency,
-                        "updatedAt": firestore.SERVER_TIMESTAMP,
-                    }
-                }
+            "totals": {
+                "totalBalance": total_balance,
+                "currency": currency,
+                "updatedAt": firestore.SERVER_TIMESTAMP,
             }
         },
         merge=True,
@@ -1155,22 +1188,12 @@ def _cboj_headers_psu(psu_access_token: str) -> dict:
     }
 
 
-def _cboj_providers_ref(uid: str):
-    return db.collection("users").document(uid)
-
-
 def _cboj_write_provider_state(uid: str, data: dict):
-    user_ref = _cboj_providers_ref(uid)
-    user_ref.set(
-        {"providers": {CBOJ_PROVIDER_KEY: data}},
-        merge=True,
-    )
+    _write_bank_state(uid, CBOJ_PROVIDER_KEY, data)
 
 
 def _cboj_read_provider_state(uid: str) -> dict:
-    snap = _cboj_providers_ref(uid).get()
-    d = snap.to_dict() or {}
-    return ((d.get("providers") or {}).get(CBOJ_PROVIDER_KEY) or {})
+    return _read_bank_state(uid, CBOJ_PROVIDER_KEY)
 
 
 def _cboj_ensure_psu_token(uid: str) -> str:
@@ -1449,16 +1472,12 @@ def _cboj_sync_accounts_internal(uid: str) -> dict:
         batch.set(accounts_ref.document(account_id), acc_doc, merge=True)
 
     batch.set(
-        user_ref,
+        _bank_status_ref(uid, CBOJ_PROVIDER_KEY),
         {
-            "providers": {
-                CBOJ_PROVIDER_KEY: {
-                    "totals": {
-                        "totalBalance": total_balance,
-                        "currency": currency,
-                        "updatedAt": firestore.SERVER_TIMESTAMP,
-                    }
-                }
+            "totals": {
+                "totalBalance": total_balance,
+                "currency": currency,
+                "updatedAt": firestore.SERVER_TIMESTAMP,
             }
         },
         merge=True,
@@ -1865,21 +1884,12 @@ def _etihad_headers(access_token: str) -> dict:
 
 
 # --- Firestore helpers ---
-def _etihad_providers_ref(uid: str):
-    return db.collection("users").document(uid)
-
-
 def _etihad_write_provider_state(uid: str, data: dict):
-    _etihad_providers_ref(uid).set(
-        {"providers": {ETIHAD_PROVIDER_KEY: data}},
-        merge=True,
-    )
+    _write_bank_state(uid, ETIHAD_PROVIDER_KEY, data)
 
 
 def _etihad_read_provider_state(uid: str) -> dict:
-    snap = _etihad_providers_ref(uid).get()
-    d = snap.to_dict() or {}
-    return ((d.get("providers") or {}).get(ETIHAD_PROVIDER_KEY) or {})
+    return _read_bank_state(uid, ETIHAD_PROVIDER_KEY)
 
 
 def _etihad_ensure_token(uid: str) -> str:
@@ -2627,18 +2637,12 @@ def _hbtf_access_token() -> str:
 
 
 # --- Firestore helpers ---
-def _hbtf_providers_ref(uid: str):
-    return db.collection("users").document(uid)
-
-
 def _hbtf_write_provider_state(uid: str, data: dict):
-    _hbtf_providers_ref(uid).set({"providers": {HBTF_PROVIDER_KEY: data}}, merge=True)
+    _write_bank_state(uid, HBTF_PROVIDER_KEY, data)
 
 
 def _hbtf_read_provider_state(uid: str) -> dict:
-    snap = _hbtf_providers_ref(uid).get()
-    d = snap.to_dict() or {}
-    return ((d.get("providers") or {}).get(HBTF_PROVIDER_KEY) or {})
+    return _read_bank_state(uid, HBTF_PROVIDER_KEY)
 
 
 def _hbtf_ensure_consent_token(uid: str) -> str:
