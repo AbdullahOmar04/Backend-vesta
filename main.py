@@ -1,6 +1,7 @@
 import base64
 from datetime import datetime, timedelta, timezone
 import hashlib
+import threading
 import time
 import uuid
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -584,7 +585,8 @@ def _bank_status_fields(data: dict) -> dict:
     status = {}
     if "linked" in data:
         status["linked"] = bool(data["linked"])
-    expires_at = (data.get("tokens") or {}).get("expires_at")
+    # When the backend renews the token itself (HBTF), the consent's end is when the user has to act
+    expires_at = (data.get("consent") or {}).get("to") or (data.get("tokens") or {}).get("expires_at")
     if expires_at is not None:
         status["expiresAt"] = expires_at
     consent_status = (data.get("consent") or {}).get("status")
@@ -2559,11 +2561,12 @@ def _hbtf_jades_signature(method: str, url: str, body: str | None = None,
 
 
 def _hbtf_signed_request(method: str, path: str, *, token: str, params: dict | None = None,
-                         body: dict | None = None, interactions_id: bool = False) -> requests.Response:
+                         body: dict | None = None) -> requests.Response:
     """Send a JAdES-signed request to the HBTF data API.
 
     The request is prepared first so the signature can cover the exact URL that goes
-    out on the wire, query encoding included.
+    out on the wire, query encoding included. Every request carries X-Interactions-Id:
+    HBTF requires it on more endpoints than its spec lists (/institution 400s without it).
     """
     body_str = json.dumps(body, separators=(",", ":")) if body is not None else None
 
@@ -2588,8 +2591,7 @@ def _hbtf_signed_request(method: str, path: str, *, token: str, params: dict | N
     if body_str is not None:
         prepped.headers["Content-Type"] = "application/json"
         prepped.headers["Digest"] = _hbtf_digest(body_str)
-    if interactions_id:
-        prepped.headers["X-Interactions-Id"] = str(uuid.uuid4())
+    prepped.headers["X-Interactions-Id"] = str(uuid.uuid4())
     prepped.headers["X-Jws-Signature"] = _hbtf_jades_signature(method, prepped.url, body_str)
 
     try:
@@ -2645,32 +2647,106 @@ def _hbtf_read_provider_state(uid: str) -> dict:
     return _read_bank_state(uid, HBTF_PROVIDER_KEY)
 
 
-def _hbtf_ensure_consent_token(uid: str) -> str:
-    """Load the stored consent token. HBTF issues no refresh token — an expired
-    consent means the customer has to authorise a new one in the Iskan app."""
-    st = _hbtf_read_provider_state(uid)
+def _hbtf_parse_time(value) -> datetime | None:
+    """HBTF and our own stored timestamps, as aware UTC datetimes (None if unparseable)."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _hbtf_save_consent_token(uid: str, consent: dict, payload: dict) -> tuple[str, datetime]:
+    """Store the token from a successful POST /consent/{consentId}/token.
+
+    HBTF voids the previous token every time it issues one, so this has to run
+    right after each call or the stored token stops working.
+    """
+    consent_token = payload.get("access_token")
+    if not consent_token:
+        raise HTTPException(status_code=502, detail="HBTF consent token response missing access_token")
+
+    ttl = int(payload.get("expires_in") or 0)
+    expires_at = _utc_now() + timedelta(seconds=max(ttl, 0))
+
+    consent_state = {"consent_id": consent["consent_id"], "status": "Authorised"}
+    if consent.get("to"):
+        consent_state["to"] = consent["to"]  # keeps bankLinks.expiresAt on the consent's end
+
+    _hbtf_write_provider_state(uid, {
+        "sandbox": HBTF_SANDBOX,
+        "linked": True,
+        "consent": consent_state,
+        "tokens": {
+            "consent_token": consent_token,
+            "expires_at": _iso(expires_at),
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        },
+    })
+    return consent_token, expires_at
+
+
+# Renew a little early so a sync doesn't start on a token that dies halfway through
+_HBTF_RENEW_MARGIN = timedelta(minutes=10)
+_hbtf_renew_locks: dict[str, threading.Lock] = {}
+_hbtf_renew_locks_guard = threading.Lock()
+
+
+def _hbtf_renew_lock(uid: str) -> threading.Lock:
+    with _hbtf_renew_locks_guard:
+        return _hbtf_renew_locks.setdefault(uid, threading.Lock())
+
+
+def _hbtf_fresh_token(st: dict) -> str | None:
+    """The stored consent token, unless it's missing or about to expire."""
     tokens = st.get("tokens") or {}
     consent_token = tokens.get("consent_token")
-    expires_at = tokens.get("expires_at")
+    exp = _hbtf_parse_time(tokens.get("expires_at"))
+    if consent_token and (exp is None or exp > _utc_now() + _HBTF_RENEW_MARGIN):
+        return consent_token
+    return None
 
-    if not consent_token:
-        raise HTTPException(
-            status_code=400,
-            detail="Housing Bank not linked yet. Initiate a consent and approve it in the Iskan app first.",
-        )
 
-    if expires_at:
-        try:
-            exp = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-        except Exception:
-            return consent_token
-        if exp <= _utc_now():
+def _hbtf_ensure_consent_token(uid: str) -> str:
+    """Load the stored consent token, re-issuing it when it's about to expire.
+
+    The token lasts 30 days but the consent a year, and HBTF's refresh_token comes back
+    empty. Calling /consent/{consentId}/token again issues a fresh token without the
+    customer, so only the end of the consent sends them back to the Iskan app.
+    """
+    consent_token = _hbtf_fresh_token(_hbtf_read_provider_state(uid))
+    if consent_token:
+        return consent_token
+
+    # Each renewal voids the previous token, so two requests renewing at once would
+    # leave one of them holding a dead token
+    with _hbtf_renew_lock(uid):
+        st = _hbtf_read_provider_state(uid)
+        consent_token = _hbtf_fresh_token(st)
+        if consent_token:
+            return consent_token  # renewed by the request we waited on
+
+        consent = st.get("consent") or {}
+        if not (st.get("tokens") or {}).get("consent_token"):
             raise HTTPException(
-                status_code=401,
-                detail="Housing Bank consent expired. Initiate a new consent.",
+                status_code=400,
+                detail="Housing Bank not linked yet. Initiate a consent and approve it in the Iskan app first.",
             )
 
-    return consent_token
+        ends = _hbtf_parse_time(consent.get("to"))
+        if not consent.get("consent_id") or (ends and ends <= _utc_now()):
+            raise HTTPException(status_code=401, detail="Housing Bank consent expired. Initiate a new consent.")
+
+        r = _hbtf_signed_request("POST", f"/consent/{consent['consent_id']}/token", token=_hbtf_access_token())
+        if r.status_code == 401 and "http.auth.consent." in r.text:
+            # Revoked in Iskan, or ended without us having its end date
+            raise HTTPException(status_code=401, detail="Housing Bank consent expired. Initiate a new consent.")
+        if r.status_code >= 400:
+            raise HTTPException(status_code=r.status_code, detail=f"HBTF consent token renewal failed: {r.text[:500]}")
+
+        return _hbtf_save_consent_token(uid, consent, r.json())[0]
 
 
 def _hbtf_normalize_account(a: dict) -> dict:
@@ -2699,12 +2775,20 @@ def _hbtf_normalize_transaction(t: dict, acct_id: str) -> dict:
 
     direction = "credit" if (t.get("transactionType") or "").lower() == "credit" else "debit"
 
-    # HBTF has no free-text narrative field. Prefer the merchant, then the other party
+    # Prefer the merchant, then the payment's remittance text, then the other party
     # (the creditor on a debit, the debtor on a credit), then channel/instrument codes.
     merchant = ((t.get("merchantDetails") or {}).get("merchantName") or {}).get("enName")
+    # HBTF's spec has rmtInf as a map of strings; the JoPACC banks send unstructured as a
+    # list. Take the first text either way, "unstructured" first.
+    rmt = {}
+    for k, v in (t.get("rmtInf") or {}).items():
+        text = next((s.strip() for s in (v if isinstance(v, list) else [v]) if isinstance(s, str) and s.strip()), None)
+        if text:
+            rmt[k] = text
+    remittance = rmt.get("unstructured") or next(iter(rmt.values()), None)
     party, personal = ("creditor", "creditorPersonal") if direction == "debit" else ("debtor", "debtorPersonal")
     counterparty = ((t.get(party) or {}).get(personal) or {}).get("name")
-    description = merchant or counterparty or " ".join(
+    description = merchant or remittance or counterparty or " ".join(
         p for p in [channel.get("name"), instrument.get("code"), t.get("transactionTypeCode")] if p
     )
 
@@ -2745,7 +2829,6 @@ def _hbtf_paginate(path: str, *, token: str, params: dict,
         r = _hbtf_signed_request(
             "GET", path, token=token,
             params={**params, "skip": skip, "limit": page_size},
-            interactions_id=True,
         )
         if r.status_code >= 400:
             if skip == 0:
@@ -2825,37 +2908,22 @@ def hbtf_consent_token(uid: str, _uid: str = Depends(get_authorized_uid)):
     HBTF exposes no consent-status endpoint, so this doubles as the status check: it
     fails with http.auth.consent.not_authorised until the customer approves in Iskan.
     """
-    st = _hbtf_read_provider_state(uid)
-    consent_id = ((st.get("consent") or {}).get("consent_id"))
-    if not consent_id:
-        raise HTTPException(status_code=400, detail="No HBTF consent on file. Initiate a consent first.")
+    # Same lock as renewal: issuing a token here voids the one a sync may be using
+    with _hbtf_renew_lock(uid):
+        st = _hbtf_read_provider_state(uid)
+        consent = st.get("consent") or {}
+        if not consent.get("consent_id"):
+            raise HTTPException(status_code=400, detail="No HBTF consent on file. Initiate a consent first.")
 
-    token = _hbtf_access_token()
-    r = _hbtf_signed_request("POST", f"/consent/{consent_id}/token", token=token)
-    if r.status_code >= 400:
-        raise HTTPException(
-            status_code=r.status_code,
-            detail=f"HBTF consent token failed (customer may not have approved yet): {r.text[:500]}",
-        )
+        token = _hbtf_access_token()
+        r = _hbtf_signed_request("POST", f"/consent/{consent['consent_id']}/token", token=token)
+        if r.status_code >= 400:
+            raise HTTPException(
+                status_code=r.status_code,
+                detail=f"HBTF consent token failed (customer may not have approved yet): {r.text[:500]}",
+            )
 
-    payload = r.json()
-    consent_token = payload.get("access_token")
-    if not consent_token:
-        raise HTTPException(status_code=502, detail="HBTF consent token response missing access_token")
-
-    ttl = int(payload.get("expires_in") or 0)
-    expires_at = _utc_now() + timedelta(seconds=max(ttl, 0))
-
-    _hbtf_write_provider_state(uid, {
-        "sandbox": HBTF_SANDBOX,
-        "linked": True,
-        "consent": {"consent_id": consent_id, "status": "Authorised"},
-        "tokens": {
-            "consent_token": consent_token,
-            "expires_at": _iso(expires_at),
-            "updatedAt": firestore.SERVER_TIMESTAMP,
-        },
-    })
+        _, expires_at = _hbtf_save_consent_token(uid, consent, r.json())
 
     return {"status": "success", "expires_at": _iso(expires_at)}
 
@@ -2881,7 +2949,7 @@ def hbtf_get_accounts(
     if sort:
         params["sort"] = sort
 
-    r = _hbtf_signed_request("GET", "/accounts", token=consent_token, params=params, interactions_id=True)
+    r = _hbtf_signed_request("GET", "/accounts", token=consent_token, params=params)
     if r.status_code >= 400:
         raise HTTPException(status_code=r.status_code, detail=f"HBTF get accounts failed: {r.text[:500]}")
 
@@ -2901,26 +2969,39 @@ def hbtf_get_balances(uid: str, account_id: str, _uid: str = Depends(get_authori
     """GET /accounts/{accountId}/balances — every balance type for one account."""
     consent_token = _hbtf_ensure_consent_token(uid)
 
-    r = _hbtf_signed_request("GET", f"/accounts/{account_id}/balances",
-                             token=consent_token, interactions_id=True)
+    r = _hbtf_signed_request("GET", f"/accounts/{account_id}/balances", token=consent_token)
     if r.status_code >= 400:
         raise HTTPException(status_code=r.status_code, detail=f"HBTF get balances failed: {r.text[:500]}")
 
-    rows = (r.json() or {}).get("data") or []
+    data = r.json() or {}
+    rows = data.get("data") or []
 
-    # HBTF returns one row per balance type (Available, Current, ...) — key them for the client
-    by_type = {}
-    for b in rows:
-        amount = b.get("amount") or {}
-        if b.get("type"):
-            by_type[b["type"]] = {
+    # The spec's schema (and JoPACC's balanceComplexType) is one object with a field per
+    # balance type, position credit|debit. Its example still shows rows, so read both.
+    balances = {}
+    currency = data.get("balanceCurrency")
+    for name, field in (("available", "availableBalance"), ("current", "currentBalance")):
+        b = data.get(field) or {}
+        if b:
+            balances[name] = {"amount": b.get("balanceAmount"), "position": b.get("balancePosition")}
+    for row in rows:
+        amount = row.get("amount") or {}
+        if row.get("type"):
+            balances[row["type"].lower()] = {
                 "amount": amount.get("amount"),
-                "currency": amount.get("currency"),
-                "creditDebitIndicator": b.get("creditDebitIndicator"),
-                "dateTime": b.get("dateTime"),
+                "position": (row.get("creditDebitIndicator") or "").lower() or None,
             }
+            currency = currency or amount.get("currency")
 
-    return {"status": "success", "accountId": account_id, "balances": by_type, "raw": rows}
+    return {
+        "status": "success",
+        "accountId": account_id,
+        "currency": currency,
+        "balances": balances,
+        "creditLimit": data.get("creditlimit"),
+        "lastModified": data.get("lastModificationDate"),
+        "raw": data,
+    }
 
 
 @app.get("/banks/hbtf/get_transactions/{uid}/{account_id}")
@@ -2955,7 +3036,7 @@ def hbtf_get_transactions(
             params[key] = value
 
     r = _hbtf_signed_request("GET", f"/accounts/{account_id}/transactions",
-                             token=consent_token, params=params, interactions_id=True)
+                             token=consent_token, params=params)
     if r.status_code >= 400:
         raise HTTPException(status_code=r.status_code, detail=f"HBTF get transactions failed: {r.text[:500]}")
 
