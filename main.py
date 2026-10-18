@@ -1823,7 +1823,7 @@ def _etihad_login_init(*, username: str, password: str, tpp_access_token: str) -
     payload = {
         "Username": username,
         "Password": password,
-        "Scope": "identity",
+        "Scope": "accounts",  # the user token is used for the Accounts API
     }
     r = requests.post(url, headers=headers, json=payload, cert=ETIHAD_MTLS, timeout=20)
 
@@ -1850,7 +1850,7 @@ def _etihad_login_complete(*, username: str, password: str, otp_code: str, tpp_a
     payload = {
         "Username": username,
         "Password": password,
-        "Scope": "identity",
+        "Scope": "accounts",
         "Code": otp_code,
     }
     r = requests.post(url, headers=headers, json=payload, cert=ETIHAD_MTLS, timeout=20)
@@ -2017,13 +2017,14 @@ def etihad_login_init(uid: str, body: EtihadLoginInitBody, _uid: str = Depends(g
 
     result = _etihad_login_init(username=username, password=password, tpp_access_token=tpp_access)
 
-    # Store TPP token + credentials temporarily for login_complete
+    # The password is never stored: login_complete gets it from the app again.
+    # The pending_* fields are cleared in case an older backend left them behind.
     _etihad_write_provider_state(uid, {
         "provider": ETIHAD_PROVIDER_LABEL,
         "sandbox": ETIHAD_SANDBOX,
-        "tpp_access_token": tpp_access,
-        "pending_username": username,
-        "pending_password": password,
+        "pending_username": None,
+        "pending_password": None,
+        "tpp_access_token": None,
         "status": result.get("status"),
         "updatedAt": firestore.SERVER_TIMESTAMP,
     })
@@ -2053,8 +2054,8 @@ def etihad_login_init(uid: str, body: EtihadLoginInitBody, _uid: str = Depends(g
 @app.post("/banks/etihad/login_complete/{uid}")
 def etihad_login_complete(uid: str, body: EtihadLoginCompleteBody, _uid: str = Depends(get_authorized_uid)):
     """Step 2: Verify OTP and get access token.
-    Body: {"otp": "123456"} — username/password are retrieved from stored state.
-    Optionally: {"username": "...", "password": "...", "otp": "123456"}
+    Body: {"username": "...", "password": "...", "otp": "123456"}. The app sends the
+    credentials again because the backend never stores the password.
     """
     _etihad_require_env()
 
@@ -2062,22 +2063,16 @@ def etihad_login_complete(uid: str, body: EtihadLoginCompleteBody, _uid: str = D
     if not otp_code:
         raise HTTPException(status_code=400, detail="otp is required")
 
-    st = _etihad_read_provider_state(uid)
-
-    # Use stored credentials or body overrides
-    username = ((body.username or "").strip() or st.get("pending_username") or "").strip()
-    password = ((body.password or "").strip() or st.get("pending_password") or "").strip()
-    tpp_access = st.get("tpp_access_token", "")
-
+    username = (body.username or "").strip()
+    password = (body.password or "").strip()
     if not username or not password:
-        raise HTTPException(status_code=400, detail="No pending credentials found. Call login_init first.")
-    if not tpp_access:
-        # Get a fresh TPP token
-        try:
-            tpp = _etihad_tpp_token()
-            tpp_access = tpp.get("access_token", "")
-        except Exception as e:
-            raise HTTPException(status_code=502, detail=f"TPP token error: {e}")
+        raise HTTPException(status_code=400, detail="username and password are required")
+
+    # The app token lasts 5 minutes, so fetch a fresh one rather than keeping it from login_init
+    try:
+        tpp_access = _etihad_tpp_token().get("access_token", "")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"TPP token error: {e}")
 
     tok = _etihad_login_complete(
         username=username, password=password,
@@ -2108,15 +2103,11 @@ def etihad_login_complete(uid: str, body: EtihadLoginCompleteBody, _uid: str = D
 
 @app.get("/banks/etihad/get_customers/{uid}")
 def etihad_get_customers(uid: str, _uid: str = Depends(get_authorized_uid)):
-    """GET /customers — list all customers linked to the app.
-    Uses app token (client_credentials), not user token."""
-    _etihad_require_env()
-    try:
-        tpp = _etihad_tpp_token(scope="accounts")
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"TPP token error: {e}")
-
-    headers = _etihad_headers(tpp.get("access_token", ""))
+    """GET /customers with the user's token. Returns [{"User", "Customer", "Accounts"}];
+    "Customer" is null until the user has a bank customer (Etihad creates one through KYC).
+    An app token always gets an empty list here."""
+    access_token = _etihad_ensure_token(uid)
+    headers = _etihad_headers(access_token)
     url = f"{ETIHAD_ACCOUNTS_BASE}/customers"
     r = requests.get(url, headers=headers, cert=ETIHAD_MTLS, timeout=25)
     if r.status_code >= 400:
@@ -2243,23 +2234,47 @@ def etihad_sync_accounts(uid: str, customer_id: str, _uid: str = Depends(get_aut
     if not isinstance(accounts, list):
         accounts = [accounts] if accounts else []
 
-    batch = db.batch()
     acct_ref = db.collection("users").document(uid).collection("accounts")
+
+    # Same approach as HBTF: keep accounts the user linked, drop stale unlinked ones
+    linked_ids = set()
+    for doc in acct_ref.stream():
+        d = doc.to_dict() or {}
+        if d.get("provider") == ETIHAD_PROVIDER_LABEL:
+            if d.get("linked") is True:
+                linked_ids.add(doc.id)
+            else:
+                doc.reference.delete()
+
+    batch = db.batch()
     count = 0
 
     for acct in accounts:
-        acct_number = acct.get("Number") or acct.get("IBAN") or str(uuid.uuid4())
+        acct_number = str(acct.get("Number") or "").strip()
+        if not acct_number:
+            continue
         acct_id = f"etihad_{acct_number}"
+
+        balance = acct.get("AvailableBalance")
+        if balance is None:
+            balance = acct.get("CurrentBalance")
+        try:
+            balance = float(balance) if balance is not None else 0.0
+        except (TypeError, ValueError):
+            balance = 0.0
 
         doc_data = {
             "accountId": acct_id,
-            "accountNumber": acct.get("Number"),
-            "iban": acct.get("IBAN"),
+            "accountNumber": acct_number,  # raw number, used in the sync_transactions path
+            "iban": acct.get("IBAN") or "",
             "swift": acct.get("SWIFT"),
             "name": acct.get("Name"),
-            "bankName": acct.get("BankName"),
+            "bankName": acct.get("BankName") or "Bank al Etihad",
+            "accountTypeCode": acct.get("Type") or "",
+            "accountTypeName": acct.get("Name") or "",
+            "balanceAmount": balance,  # the field every screen and calcTotalBalance read
             "branch": acct.get("Branch"),
-            "currency": acct.get("CurrencyCode"),
+            "currency": acct.get("CurrencyCode") or "JOD",
             "currentBalance": acct.get("CurrentBalance"),
             "availableBalance": acct.get("AvailableBalance"),
             "blockedAmount": acct.get("BlockedAmount"),
@@ -2274,8 +2289,11 @@ def etihad_sync_accounts(uid: str, customer_id: str, _uid: str = Depends(get_aut
             "raw": acct,
             "syncedAt": firestore.SERVER_TIMESTAMP,
         }
+        if acct_id not in linked_ids:
+            doc_data["linked"] = False
 
-        batch.set(acct_ref.document(acct_id), doc_data, merge=False)
+        # merge so the app-written linked/linkedAt survive a re-sync
+        batch.set(acct_ref.document(acct_id), doc_data, merge=True)
         count += 1
 
     batch.commit()
@@ -2324,31 +2342,42 @@ def etihad_sync_transactions(
             break
         page += 1
 
-    batch = db.batch()
-    tx_ref = db.collection("users").document(uid).collection("transactions")
-    count = 0
+    # Under the account doc, where every screen reads transactions
+    tx_ref = (
+        db.collection("users")
+          .document(uid)
+          .collection("accounts")
+          .document(acct_id)
+          .collection("transactions")
+    )
+    # Skip transactions already stored so the user's category/household edits survive a re-sync
+    existing_ids = {doc.id for doc in tx_ref.stream()}
 
+    rows = []
+    seen: dict[str, int] = {}
     for tx in all_transactions:
-        # Build a stable ID from transaction fields
+        # Etihad sends no transaction id, so build a stable one from the fields. Two identical
+        # rows (same day, amount, side and text) get _2, _3... so neither is dropped.
         tx_date = tx.get("Date", "")
         tx_amount = str(tx.get("TransactionAmount", ""))
         tx_desc = tx.get("Description", "")
         tx_indicator = tx.get("DebitCreditIndicator", "")
-        raw_id = f"{account_number}_{tx_date}_{tx_amount}_{tx_indicator}_{tx_desc}"
-        tx_id = hashlib.sha256(raw_id.encode()).hexdigest()[:20]
-
-        direction = "credit" if tx_indicator == "C" else "debit"
-        amount = tx.get("TransactionAmount", 0)
-        currency = tx.get("TransactionCurrency", "JOD")
+        seed = f"{account_number}_{tx_date}_{tx_amount}_{tx_indicator}_{tx_desc}"
+        seen[seed] = seen.get(seed, 0) + 1
+        if seen[seed] > 1:
+            seed = f"{seed}_{seen[seed]}"
+        tx_id = f"etihad_{hashlib.sha256(seed.encode()).hexdigest()[:20]}"
+        if tx_id in existing_ids:
+            continue
 
         doc_data = {
             "accountId": acct_id,
-            "amount": amount,
-            "currency": currency,
-            "type": direction,
+            "amount": tx.get("TransactionAmount", 0),
+            "currency": tx.get("TransactionCurrency", "JOD"),
+            "type": "credit" if tx_indicator == "C" else "debit",
             "date": tx.get("Date"),
             "valueDate": tx.get("ValueDate"),
-            "description": tx_desc,
+            "description": tx_desc or None,
             "source": "openBanking",
             "category": None,
             "provider": ETIHAD_PROVIDER_LABEL,
@@ -2356,12 +2385,15 @@ def etihad_sync_transactions(
             "raw": tx,
             "syncedAt": firestore.SERVER_TIMESTAMP,
         }
+        rows.append((tx_id, doc_data))
 
-        batch.set(tx_ref.document(tx_id), doc_data, merge=False)
-        count += 1
+    for chunk in _hbtf_chunks(rows, 400):
+        batch = db.batch()
+        for tx_id, doc_data in chunk:
+            batch.set(tx_ref.document(tx_id), doc_data, merge=False)
+        batch.commit()
 
-    batch.commit()
-    return {"status": "success", "transactions_synced": count}
+    return {"status": "success", "transactions_synced": len(rows)}
 
 
 @app.delete("/banks/etihad/logout/{uid}")
