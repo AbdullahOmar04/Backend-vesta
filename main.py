@@ -2960,6 +2960,23 @@ def hbtf_consent_token(uid: str, _uid: str = Depends(get_authorized_uid)):
     return {"status": "success", "expires_at": _iso(expires_at)}
 
 
+@app.post("/banks/hbtf/disconnect/{uid}")
+def hbtf_disconnect(uid: str, _uid: str = Depends(get_authorized_uid)):
+    """Forget the user's Housing Bank link: delete the stored consent and token and
+    the app-visible status doc. The app deletes the account docs itself.
+
+    HBTF has no endpoint to revoke a consent, so it stays valid on their side until
+    it expires, but Vesta no longer holds anything that can use it.
+    """
+    # Same lock as renewal, so a sync can't write a fresh token back after this
+    with _hbtf_renew_lock(uid):
+        batch = db.batch()
+        batch.delete(_bank_secret_ref(uid, HBTF_PROVIDER_KEY))
+        batch.delete(_bank_status_ref(uid, HBTF_PROVIDER_KEY))
+        batch.commit()
+    return {"status": "success"}
+
+
 @app.get("/banks/hbtf/get_accounts/{uid}")
 def hbtf_get_accounts(
     uid: str,
