@@ -2,6 +2,7 @@ serviceAccountKey.json
 .venv/
 __pycache__/
 .env
+.env.*
 
 # Private keys and signing requests — never commit
 *.key
@@ -13,3 +14,5 @@ etihad-bank-doc.yaml
 
 # Bruno environment — holds a live Firebase ID token + uid
 bruno/environments/Local.bru
+# Local scratch request with a live auth header
+fresh_curl.txt
